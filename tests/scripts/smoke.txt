@@ -1,0 +1,35 @@
+# Smoke test: splash, main menu, new game, a mission, firing, web hit, pause to menu.
+# Run: phantom-spider --headless --script tests/scripts/smoke.txt --out <dir>
+wait 500
+shot 00_splash.png
+wait 25000
+shot 01_menu.png
+tap fire
+wait 200
+shot 02_eyemenu.png
+tap fire
+wait 400
+shot 03_newmission.png
+wait 2500
+shot 04_loading.png
+wait 3000
+shot 05_paused.png
+tap fire
+wait 300
+press fire
+wait 1500
+shot 06_play.png
+release fire
+press right
+wait 800
+release right
+shot 07_play.png
+press fire
+wait 6000
+release fire
+shot 08_play.png
+wait 6000
+shot 09_play.png
+tap softr
+wait 300
+shot 10_mainmenu.png
