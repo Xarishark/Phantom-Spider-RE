@@ -25,7 +25,7 @@ This needs your own copy of the original game: Phantom_Spider_s40v2.jar
 
 1. Put this folder somewhere you can write to (not Program Files).
 2. Run PhantomSpider.exe and drop the JAR on the window, or press
-   Fire / A to pick it. You can also put the JAR next to the exe.
+   Enter to pick it. You can also put the JAR next to the exe.
 3. Music needs a General MIDI SoundFont (.sf2) next to the exe.
 
 Saves: save\   Settings: settings.toml   Logs: logs\
