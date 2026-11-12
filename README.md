@@ -56,7 +56,7 @@ Big Picture mode starts the game full screen.
 | Full screen | F11, Alt+Enter | |
 | Mute / volume | M, +/- | |
 
-Gamepads can be connected or removed while playing, several at once.
+You can connect or disconnect gamepads on the JAR setup screen or during play. All connected gamepads control the same player.
 
 ## Files and settings
 
