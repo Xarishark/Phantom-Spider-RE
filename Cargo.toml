@@ -1,17 +1,24 @@
 [package]
-name = "phantom-spider"
+name = "phantom-spider-re"
 version = "0.1.0"
 edition = "2021"
-description = "Native PC port of the Nokia S40 J2ME game Phantom Spider"
+description = "Phantom Spider RE: native PC port of the 2004 Nokia Series 40 J2ME game"
 license = "MIT"
-repository = "https://github.com/Xarishark/phantom-spider"
+repository = "https://github.com/Xarishark/phantom-spider-re"
 readme = "README.md"
-keywords = ["game", "port", "j2me", "sdl3", "nokia"]
+keywords = ["game", "port", "j2me", "sdl3", "reverse-engineering"]
 categories = ["games"]
 publish = false
 
+[[bin]]
+name = "phantom-spider"
+path = "src/main.rs"
+
 [dependencies]
 png = "0.18"
+# reading the player's JAR on first start
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+sha2 = "0.10"
 rustysynth = "1.3"
 embedded-graphics = "0.8"
 

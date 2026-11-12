@@ -1,68 +1,108 @@
-//! Phantom Spider: native PC port of the 2004 Nokia Series 40 J2ME game.
+//! Phantom Spider RE: native PC port of the 2004 Nokia Series 40 J2ME game.
 //! SDL3 provides the window, keyboard and gamepad input, rumble and audio.
+//!
+//! Start-up: find the game folder (`paths`), open the log, read
+//! `settings.toml`, make sure the original game's files are prepared from
+//! the player's JAR (`setup`), load them, then run the game.
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod game;
+mod log;
 mod midp;
+mod paths;
+mod settings;
+mod setup;
 
-use midp::{assets, audio, font, gfx, lang, lcdui, rms};
+use midp::{assets, audio, font, gfx, lang, lcdui};
 
 use audio::Audio;
 use game::Game;
 use gfx::{Graphics, SCREEN_H, SCREEN_W};
 use lcdui::{K_CLEAR, K_DOWN, K_FIRE, K_LEFT, K_RIGHT, K_SOFT_L, K_SOFT_R, K_UP};
+use settings::Settings;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const HELP: &str = "\
+Phantom Spider RE
+
+Usage: phantom-spider [options]
+
+  --game <jar>        your Phantom_Spider_s40v2.jar (prepared on first use)
+  --prepare           only check the JAR given with --game and unpack it, then exit
+  --scale <n>         window size at start, n x 128 pixels
+  --fullscreen        start full screen
+  --soundfont <file>  General MIDI SoundFont for the music
+  --mute              no music
+  --no-rumble         no gamepad rumble
+  --lang <xx|tl-PH>   English (xx) or Filipino text
+  --headless --script <file> --out <dir>   run a test script without a window
+
+Keyboard: arrows/WASD move, Enter/Space fire/select, Esc menu/back,
+  Tab left soft key, Backspace clear, 0-9 keypad digits, M mute, +/- volume,
+  F11 full screen.
+Gamepad: D-pad/left stick move, A/X/RT fire/select, B/Start menu/back,
+  Y/Back/LT left soft key.
+
+Settings: settings.toml next to the game. Saves: save/. Logs: logs/.";
+
 struct Opts {
-    scale: u32,
+    scale: Option<u32>,
     fullscreen: bool,
     soundfont: Option<PathBuf>,
     script: Option<PathBuf>,
     out: PathBuf,
     headless: bool,
     mute: bool,
-    rumble: bool,
-    lang: String,
+    no_rumble: bool,
+    lang: Option<String>,
+    game: Option<PathBuf>,
+    prepare: bool,
 }
 
 fn parse_args() -> Opts {
     let mut o = Opts {
-        scale: 5,
+        scale: None,
         fullscreen: false,
         soundfont: None,
         script: None,
         out: PathBuf::from("."),
         headless: false,
         mute: false,
-        rumble: true,
-        lang: "xx".into(),
+        no_rumble: false,
+        lang: None,
+        game: None,
+        prepare: false,
     };
     let mut it = std::env::args().skip(1);
-    while let Some(a) = it.next() {
+    while let Some(arg) = it.next() {
+        // accept both "--opt value" and "--opt=value"
+        let (a, inline) = match arg.split_once('=') {
+            Some((k, v)) if k.starts_with("--") => (k.to_string(), Some(v.to_string())),
+            _ => (arg.clone(), None),
+        };
+        let mut val = || inline.clone().or_else(|| it.next());
         match a.as_str() {
-            "--scale" => o.scale = it.next().and_then(|v| v.parse().ok()).unwrap_or(5).clamp(1, 16),
+            "--scale" => o.scale = val().and_then(|v| v.parse::<u32>().ok()).map(|v| v.clamp(1, 16)),
             "--fullscreen" => o.fullscreen = true,
-            "--soundfont" => o.soundfont = it.next().map(PathBuf::from),
-            "--script" => o.script = it.next().map(PathBuf::from),
-            "--out" => o.out = it.next().map(PathBuf::from).unwrap_or_default(),
+            "--soundfont" => o.soundfont = val().map(PathBuf::from),
+            "--script" => o.script = val().map(PathBuf::from),
+            "--out" => o.out = val().map(PathBuf::from).unwrap_or_default(),
             "--headless" => o.headless = true,
             "--mute" => o.mute = true,
-            "--no-rumble" => o.rumble = false,
-            "--lang" => o.lang = it.next().unwrap_or_else(|| "xx".into()),
+            "--no-rumble" => o.no_rumble = true,
+            "--lang" => o.lang = val(),
+            "--game" => o.game = val().map(PathBuf::from),
+            "--prepare" => o.prepare = true,
             "--help" | "-h" => {
-                println!(
-                    "phantom-spider [--scale N] [--fullscreen] [--soundfont file.sf2] [--mute] [--no-rumble]\n\
-                     \n  Keyboard: arrows/WASD move, Enter/Space fire/select, Esc menu/back,\n\
-                     \x20 Backspace clear, Tab left soft key, 0-9 keypad digits, M mute, F11 fullscreen\n\
-                     Gamepad: D-pad/left stick move, A/X/RT fire/select, B/Start menu/back, Y/Back left soft key"
-                );
+                println!("{HELP}");
                 std::process::exit(0);
             }
-            _ => {}
+            other => eprintln!("ignoring unknown option {other}"),
         }
     }
     o
@@ -76,7 +116,7 @@ fn find_soundfont(o: &Opts) -> Option<PathBuf> {
     if let Some(p) = &o.soundfont {
         return Some(p.clone());
     }
-    for dir in [exe_dir(), PathBuf::from(".")] {
+    for dir in [paths::root(), exe_dir()] {
         let p = dir.join("soundfont.sf2");
         if p.exists() {
             return Some(p);
@@ -91,6 +131,15 @@ fn find_soundfont(o: &Opts) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Log, tell the player (a dialog when there's a window), and exit with `code`.
+fn fatal(gui: bool, code: i32, msg: &str) -> ! {
+    log!("error ({code}): {msg}");
+    if gui {
+        let _ = sdl3::messagebox::show_simple_message_box(sdl3::messagebox::MessageBoxFlag::ERROR, "Phantom Spider", msg, None);
+    }
+    std::process::exit(code);
 }
 
 fn save_png(path: &Path, fb: &[u32], scale: usize) {
@@ -303,81 +352,285 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
 // ----------------------------------------------------------------- main
 fn main() {
     let o = parse_args();
-    if let Err(msg) = rms::init_data_dir() {
-        eprintln!("Phantom Spider: {msg}");
-        if !o.headless && o.script.is_none() {
-            let _ = sdl3::messagebox::show_simple_message_box(
-                sdl3::messagebox::MessageBoxFlag::ERROR,
-                "Phantom Spider",
-                &msg,
-                None,
-            );
-        }
-        std::process::exit(1);
+    let gui = !o.headless && o.script.is_none() && !o.prepare;
+    let root = match paths::init() {
+        Ok(r) => r,
+        Err(m) => fatal(gui, setup::exit::NOT_WRITABLE, &m),
+    };
+    log::init();
+    log!("Phantom Spider RE {} in {}", env!("CARGO_PKG_VERSION"), root.display());
+    if let Ok(v) = std::env::var("RECOMPLAUNCHER_VERSION") {
+        log!(
+            "started by RecompLauncher {v} (mode {}, pad {})",
+            std::env::var("RECOMPLAUNCHER_MODE").unwrap_or_default(),
+            std::env::var("RECOMPLAUNCHER_PAD").unwrap_or_default()
+        );
     }
-    lang::init(&o.lang);
+    let data = paths::data_dir();
+
+    // RecompLauncher's setup step: no window, progress on stdout, exit code.
+    if o.prepare {
+        let Some(jar) = &o.game else {
+            log!("--prepare needs --game <jar>");
+            std::process::exit(setup::exit::UNREADABLE);
+        };
+        match setup::prepare(jar, &data, |f, t| println!("progress {f:.2} {t}")) {
+            Ok(n) => {
+                log!("prepared {n} files from {}", jar.display());
+                std::process::exit(0);
+            }
+            Err(e) => fatal(false, e.code, &e.message),
+        }
+    }
+
+    // A JAR given on the command line, or one sitting next to the game.
+    if !setup::prepared(&data) {
+        let jar = o.game.clone().or_else(|| setup::find_nearby(&root));
+        if let Some(jar) = jar {
+            log!("preparing game data from {}", jar.display());
+            if let Err(e) = setup::prepare(&jar, &data, |_, _| {}) {
+                fatal(gui, e.code, &e.message);
+            }
+        }
+    }
+
+    let settings = settings::load();
     let font = Rc::new(font::Font::new());
     let mut g = Graphics::new(font.clone());
 
-    let sf = find_soundfont(&o).and_then(|p| Audio::load_soundfont(&p));
-    if sf.is_none() && !o.headless {
-        eprintln!("No SoundFont found (soundfont.sf2 next to the exe); music is silent.");
-    }
-    let mut au = Audio::new(if o.headless { None } else { sf });
-    au.muted = o.mute;
-    let mut game = Game::new(au, "5");
-
-    if let Some(script) = &o.script {
-        run_script(&mut game, &mut g, script, &o.out, &font);
+    if !gui {
+        if !setup::prepared(&data) {
+            fatal(
+                false,
+                setup::exit::NOT_SET_UP,
+                &format!("The game data isn't set up. Run once with --game <path to {}>.", setup::JAR_NAME),
+            );
+        }
+        let mut game = start_game(&o, &settings, &data, false);
+        if let Some(script) = &o.script {
+            run_script(&mut game, &mut g, script, &o.out, &font);
+        }
         game.ps_destroy();
         return;
     }
-    if let Err(e) = run(&o, &mut game, &mut g, &font) {
-        eprintln!("fatal: {e}");
-        game.ps_destroy();
-        std::process::exit(1);
+    if let Err(e) = run(&o, &settings, &data, &mut g, &font) {
+        fatal(true, 1, &e);
     }
 }
 
-fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result<(), String> {
+/// Load the prepared data and build the game.
+fn start_game(o: &Opts, s: &Settings, data: &Path, gui: bool) -> Game {
+    match assets::load(data) {
+        Ok(n) => log!("loaded {n} game files"),
+        Err(e) => fatal(gui, setup::exit::NOT_SET_UP, &e),
+    }
+    lang::init(o.lang.as_deref().unwrap_or(&s.language));
+    let sf = if gui { find_soundfont(o).and_then(|p| Audio::load_soundfont(&p)) } else { None };
+    if gui && sf.is_none() {
+        log!("no SoundFont found (put a .sf2 next to the game); music is silent");
+    }
+    let mut au = Audio::new(sf);
+    au.volume = 2.0 * s.volume as f32 / 100.0;
+    au.muted = o.mute || !s.music;
+    Game::new(au, "5")
+}
+
+/// Copy the 128x128 framebuffer to the window.
+fn present(canvas: &mut sdl3::render::WindowCanvas, tex: &mut sdl3::render::Texture, g: &Graphics) -> Result<(), String> {
+    let bytes: Vec<u8> = g.fb.iter().flat_map(|p| p.to_le_bytes()).collect();
+    tex.update(None, &bytes, 128 * 4).map_err(|e| e.to_string())?;
+    canvas.set_draw_color(sdl3::pixels::Color::RGB(0, 0, 0));
+    canvas.clear();
+    canvas.copy(tex, None, None).map_err(|e| e.to_string())?;
+    canvas.present();
+    Ok(())
+}
+
+/// First start without game data: ask for the JAR (drop it on the window or
+/// pick it). Returns false if the player quit.
+fn setup_screen(
+    canvas: &mut sdl3::render::WindowCanvas,
+    tex: &mut sdl3::render::Texture,
+    events: &mut sdl3::EventPump,
+    pads: &sdl3::GamepadSubsystem,
+    g: &mut Graphics,
+    data: &Path,
+) -> Result<bool, String> {
+    use sdl3::event::Event;
+    use sdl3::keyboard::Keycode;
+    let mut status: Option<(String, bool)> = None; // (text, is_error)
+    let picked: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
+    let mut dialog_open = false;
+    let mut open_pads = Vec::new();
+    loop {
+        let mut try_jar: Option<PathBuf> = None;
+        let mut browse = false;
+        for ev in events.poll_iter() {
+            match ev {
+                Event::Quit { .. } => return Ok(false),
+                Event::DropFile { filename, .. } => try_jar = Some(PathBuf::from(filename)),
+                Event::KeyDown { keycode: Some(k), repeat: false, .. } => match k {
+                    Keycode::Return | Keycode::Return2 | Keycode::KpEnter | Keycode::Space | Keycode::Tab => browse = true,
+                    Keycode::Escape => return Ok(false),
+                    _ => {}
+                },
+                Event::GamepadAdded { which, .. } => {
+                    if let Ok(p) = pads.open(which) {
+                        open_pads.push(p);
+                    }
+                }
+                Event::GamepadButtonDown { button, .. } => {
+                    use sdl3::gamepad::Button as B;
+                    match button {
+                        B::South | B::West | B::North | B::Back => browse = true,
+                        B::East | B::Start => return Ok(false),
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        if browse && !dialog_open {
+            dialog_open = true;
+            let slot = picked.clone();
+            let filters = [sdl3::dialog::DialogFileFilter { name: "Phantom Spider (.jar)", pattern: "jar" }];
+            let r = sdl3::dialog::show_open_file_dialog(
+                &filters,
+                None::<PathBuf>,
+                false,
+                canvas.window(),
+                Box::new(move |res, _| {
+                    let path = res.ok().and_then(|v| v.into_iter().next());
+                    *slot.lock().unwrap() = Some(path);
+                }),
+            );
+            if let Err(e) = r {
+                dialog_open = false;
+                status = Some((format!("Couldn't open a file picker ({e:?}). Drop the file on this window instead."), true));
+            }
+        }
+        let result = picked.lock().unwrap().take();
+        if let Some(result) = result {
+            dialog_open = false;
+            try_jar = try_jar.or(result);
+        }
+        if let Some(jar) = try_jar {
+            log!("setup: trying {}", jar.display());
+            status = Some(("Checking...".into(), false));
+            draw_setup(g, &status);
+            present(canvas, tex, g)?;
+            match setup::prepare(&jar, data, |_, _| {}) {
+                Ok(n) => {
+                    log!("prepared {n} files from {}", jar.display());
+                    return Ok(true);
+                }
+                Err(e) => {
+                    log!("setup failed ({}): {}", e.code, e.message);
+                    status = Some((e.message.replace('\n', " "), true));
+                }
+            }
+        }
+        draw_setup(g, &status);
+        present(canvas, tex, g)?;
+        std::thread::sleep(Duration::from_millis(16));
+    }
+}
+
+fn draw_setup(g: &mut Graphics, status: &Option<(String, bool)>) {
+    use gfx::{HCENTER, LEFT, RIGHT, TOP};
+    g.reset_clip();
+    g.set_color(0, 0, 0);
+    g.fill_rect(0, 0, 128, 128);
+    g.set_color(31, 0, 108);
+    g.fill_rect(0, 0, 128, 12);
+    g.set_color(88, 89, 172);
+    g.fill_rect(0, 11, 128, 1);
+    g.set_color(255, 255, 255);
+    g.draw_string("Phantom Spider", 64, 1, TOP | HCENTER);
+    let font = g.font.clone();
+    let mut y = 15;
+    let para = |g: &mut Graphics, text: &str, rgb: (i32, i32, i32), y: &mut i32| {
+        g.set_color(rgb.0, rgb.1, rgb.2);
+        for line in font.wrap(text, 122) {
+            g.draw_string(&line, 3, *y, TOP | LEFT);
+            *y += 10;
+        }
+    };
+    para(g, "This needs your copy of the original game:", (230, 230, 255), &mut y);
+    para(g, setup::JAR_NAME, (255, 0, 213), &mut y);
+    y += 3;
+    match status {
+        Some((text, err)) => para(g, text, if *err { (255, 90, 90) } else { (120, 255, 120) }, &mut y),
+        None => para(g, "Drop it on this window, or press Fire / A to pick it.", (230, 230, 255), &mut y),
+    }
+    g.set_color(31, 0, 108);
+    g.fill_rect(0, 117, 128, 11);
+    g.set_color(88, 89, 172);
+    g.fill_rect(0, 117, 128, 1);
+    g.set_color(255, 255, 255);
+    g.draw_string("Pick file", 2, 118, TOP | LEFT);
+    g.draw_string("Quit", 126, 118, TOP | RIGHT);
+}
+
+fn set_icon(window: &mut sdl3::video::Window) {
+    use sdl3::pixels::PixelFormat;
+    let Some(icon) = assets::get("/icon.png").and_then(gfx::Image::from_png) else { return };
+    if let Ok(mut s) = sdl3::surface::Surface::new(icon.w as u32, icon.h as u32, PixelFormat::ARGB8888) {
+        let pitch = s.pitch() as usize;
+        s.with_lock_mut(|buf: &mut [u8]| {
+            for y in 0..icon.h as usize {
+                for x in 0..icon.w as usize {
+                    let p = icon.px[y * icon.w as usize + x].to_le_bytes();
+                    buf[y * pitch + x * 4..y * pitch + x * 4 + 4].copy_from_slice(&p);
+                }
+            }
+        });
+        window.set_icon(&s);
+    }
+}
+
+fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font) -> Result<(), String> {
     use sdl3::event::{Event, WindowEvent};
     use sdl3::pixels::PixelFormat;
 
-    sdl3::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1");
+    // RecompLauncher's overlay also reads the controller: background input
+    // stays off unless the player turns it on.
+    sdl3::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", if s.background_input { "1" } else { "0" });
     let sdl = sdl3::init().map_err(|e| e.to_string())?;
     let video = sdl.video().map_err(|e| e.to_string())?;
     let pads = sdl.gamepad().map_err(|e| e.to_string())?;
 
-    let mut wb = video.window("Phantom Spider", 128 * o.scale, 128 * o.scale);
+    let bigpicture = std::env::var("RECOMPLAUNCHER_MODE").is_ok_and(|m| m == "bigpicture");
+    let scale = o.scale.unwrap_or(s.scale);
+    let mut wb = video.window("Phantom Spider", 128 * scale, 128 * scale);
     wb.resizable().position_centered().high_pixel_density();
     let mut window = wb.build().map_err(|e| e.to_string())?;
-    if let Some(icon) = assets::get("/icon.png").and_then(gfx::Image::from_png) {
-        if let Ok(mut s) = sdl3::surface::Surface::new(icon.w as u32, icon.h as u32, PixelFormat::ARGB8888) {
-            let pitch = s.pitch() as usize;
-            s.with_lock_mut(|buf: &mut [u8]| {
-                for y in 0..icon.h as usize {
-                    for x in 0..icon.w as usize {
-                        let p = icon.px[y * icon.w as usize + x].to_le_bytes();
-                        buf[y * pitch + x * 4..y * pitch + x * 4 + 4].copy_from_slice(&p);
-                    }
-                }
-            });
-            window.set_icon(&s);
-        }
-    }
-    if o.fullscreen {
+    if o.fullscreen || s.fullscreen || bigpicture {
         let _ = window.set_fullscreen(true);
     }
     let mut canvas = window.into_canvas();
     unsafe {
         sdl3::sys::render::SDL_SetRenderVSync(canvas.raw(), 1);
     }
-    canvas
-        .set_logical_size(128, 128, sdl3::sys::render::SDL_LOGICAL_PRESENTATION_INTEGER_SCALE)
-        .map_err(|e| e.to_string())?;
+    let presentation = if s.scaling == "fill" {
+        sdl3::sys::render::SDL_LOGICAL_PRESENTATION_LETTERBOX
+    } else {
+        sdl3::sys::render::SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+    };
+    canvas.set_logical_size(128, 128, presentation).map_err(|e| e.to_string())?;
     let tc = canvas.texture_creator();
     let mut tex = tc.create_texture_streaming(PixelFormat::ARGB8888, 128, 128).map_err(|e| e.to_string())?;
     tex.set_scale_mode(sdl3::render::ScaleMode::Nearest);
+    let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
+
+    if !setup::prepared(data) && !setup_screen(&mut canvas, &mut tex, &mut events, &pads, g, data)? {
+        log!("setup cancelled");
+        return Ok(());
+    }
+    let mut game_obj = start_game(o, s, data, true);
+    let game = &mut game_obj;
+    set_icon(canvas.window_mut());
+    let rumble = !o.no_rumble && s.rumble;
 
     // audio (optional)
     let audio_sub = sdl.audio().ok();
@@ -388,14 +641,13 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
         Some(s)
     });
     if stream.is_none() {
-        eprintln!("audio unavailable; continuing silently");
+        log!("audio unavailable; continuing silently");
     }
     let mut abuf: Vec<f32> = Vec::new();
 
     let mut pads_open: HashMap<u32, sdl3::gamepad::Gamepad> = HashMap::new();
     let mut axis_state: HashMap<(u32, u8), i32> = HashMap::new();
     let mut input = Input::new();
-    let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
     let mut last = Instant::now();
 
     while !game.quit {
@@ -500,7 +752,13 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
                     if now != prev {
                         let src = SRC_AXIS | (which as u64) << 8 | id as u64;
                         input.release(src, game, font);
-                        let code = if now > 0 { pos } else if now < 0 { neg } else { 0 };
+                        let code = if now > 0 {
+                            pos
+                        } else if now < 0 {
+                            neg
+                        } else {
+                            0
+                        };
                         if code != 0 {
                             input.press(src, code, game, font);
                         }
@@ -522,7 +780,7 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
         game.update(dt, g);
 
         if let Some((lo, hi, ms)) = game.rumble.take() {
-            if o.rumble {
+            if rumble {
                 for p in pads_open.values_mut() {
                     let _ = p.set_rumble(lo, hi, ms);
                 }
@@ -541,15 +799,33 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
             game.audio.render((audio::RATE as f64 * dt / 1000.0) as usize, &mut abuf);
         }
 
-        let bytes: Vec<u8> = g.fb.iter().flat_map(|p| p.to_le_bytes()).collect();
-        tex.update(None, &bytes, 128 * 4).map_err(|e| e.to_string())?;
-        canvas.set_draw_color(sdl3::pixels::Color::RGB(0, 0, 0));
-        canvas.clear();
-        canvas.copy(&tex, None, None).map_err(|e| e.to_string())?;
-        canvas.present();
+        present(&mut canvas, &mut tex, g)?;
         if dt < 4.0 {
             std::thread::sleep(Duration::from_millis(2));
         }
     }
+    log!("quit");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Renders the first-start screen in its three states to
+    /// target/setup-screen-*.png for a visual check.
+    #[test]
+    fn setup_screen_renders() {
+        let mut g = Graphics::new(Rc::new(font::Font::new()));
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+        let states = [
+            ("idle", None),
+            ("checking", Some(("Checking...".to_string(), false))),
+            ("wrong", Some(("fake.jar isn't the supported Phantom Spider. It needs the Nokia Series 40 128x128 release, Phantom_Spider_s40v2.jar (118744 bytes).".to_string(), true))),
+        ];
+        for (name, status) in states {
+            draw_setup(&mut g, &status);
+            save_png(&dir.join(format!("setup-screen-{name}.png")), &g.fb, 3);
+        }
+    }
 }

@@ -1,38 +1,11 @@
-//! `javax.microedition.rms.RecordStore` backed by files in a `save` folder
-//! next to the executable, wrapped the same way as the game's `w` helper class.
+//! `javax.microedition.rms.RecordStore` backed by files in the `save` folder
+//! (see `paths`), wrapped the same way as the game's `w` helper class.
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
-static DIR: OnceLock<PathBuf> = OnceLock::new();
-
-/// Pick and check the save folder: `save/` next to the exe, or
-/// `PHANTOM_SPIDER_DATA` if set. Must be called once at startup; returns an
-/// error message if the folder can't be created or written.
-pub fn init_data_dir() -> Result<PathBuf, String> {
-    let dir = match std::env::var_os("PHANTOM_SPIDER_DATA") {
-        Some(d) => PathBuf::from(d),
-        None => std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("save")))
-            .ok_or_else(|| "Can't find the game's folder.".to_string())?,
-    };
-    let probe = dir.join(".write-test");
-    let ok = fs::create_dir_all(&dir).and_then(|_| fs::write(&probe, b""));
-    let _ = fs::remove_file(&probe);
-    if let Err(e) = ok {
-        return Err(format!(
-            "Can't write saves to:\n{}\n\n{e}\n\nMove the game to a folder you can write to (not Program Files).",
-            dir.display()
-        ));
-    }
-    let _ = DIR.set(dir.clone());
-    Ok(dir)
-}
-
-pub fn data_dir() -> PathBuf {
-    DIR.get().cloned().expect("init_data_dir not called")
+fn data_dir() -> PathBuf {
+    crate::paths::save_dir()
 }
 
 fn path(name: &str) -> PathBuf {

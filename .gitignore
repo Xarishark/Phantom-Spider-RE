@@ -1,5 +1,11 @@
 /target/
 /dist/
 *.sf2
-# original JAR/JAD and decompiled Java: kept locally, not published
+# original JAR/JAD and decompiled Java: kept locally, never published
 /game-files/
+# made next to the binary when running from the repo folder
+/data/
+/data.new/
+/save/
+/logs/
+/settings.toml

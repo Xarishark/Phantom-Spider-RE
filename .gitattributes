@@ -7,4 +7,3 @@
 *.jar binary
 *.sf2 binary
 *.bundle binary
-assets/lang.* binary
