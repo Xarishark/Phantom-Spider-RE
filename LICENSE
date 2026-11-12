@@ -22,7 +22,7 @@ SOFTWARE.
 
 ---
 
-This license covers the port's source code only. The game assets in
-`assets/` (images, music, text) are from the original Phantom Spider
-(2004) and belong to their respective owners; they are not covered by
-this license.
+This license covers the port's source code only. The original Phantom
+Spider game (2004) and its art, music and text belong to their respective
+owners; none of it is part of this project, and players supply their own
+copy.

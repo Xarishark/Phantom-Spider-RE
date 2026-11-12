@@ -10,16 +10,21 @@ APIs the game used. Nothing Java runs at any point.
 
 ```
 src/
-├─ main.rs        SDL3 front end: window, scaling, keyboard/gamepad, rumble,
-│                 audio stream, fixed-step loop, headless test driver
+├─ main.rs        SDL3 front end: start-up, first-start setup screen, window,
+│                 scaling, keyboard/gamepad, rumble, audio stream,
+│                 fixed-step loop, headless test driver
+├─ paths.rs       the portable game folder: save/, data/, logs/, settings.toml
+├─ setup.rs       checks the player's JAR and unpacks it into data/
+├─ settings.rs    settings.toml (written with comments on first start)
+├─ log.rs         logs/phantom-spider.log, last three runs
 ├─ midp/          phone API stand-ins
 │  ├─ gfx.rs      Graphics, Image, game.Sprite on a 128x128 ARGB framebuffer
 │  ├─ font.rs     proportional pixel font (stands in for the S40 small font)
 │  ├─ lcdui.rs    List / Form / Alert screens, commands, soft keys, key codes
-│  ├─ rms.rs      RecordStore, saved as save/<name>.rms next to the exe
+│  ├─ rms.rs      RecordStore, saved as save/<name>.rms
 │  ├─ audio.rs    MMAPI MIDI Player via rustysynth + a SoundFont
 │  ├─ lang.rs     the game's string tables (lang.xx etc.)
-│  └─ assets.rs   assets/ embedded into the exe by build.rs
+│  └─ assets.rs   getResourceAsStream: data/ read into memory at start
 └─ game/          the game itself, one Rust file per group of Java classes
    ├─ midlet.rs   PhantomSpider (MIDlet): menus, forms, commands, save format
    ├─ kcanvas.rs  k: menu canvas (eye list, combining, pilot/spider info, high scores)
@@ -80,6 +85,39 @@ Headless comparisons against the original-rate build (same scripts, 20 runs
 each) gave the same movement per second, scores per weapon type and damage
 taken within run-to-run noise.
 
+## The player's JAR
+
+None of the original files ship with the port. `setup.rs` accepts only the
+known release (`Phantom_Spider_s40v2.jar`, 118,744 bytes, checked by
+SHA-256), copies every resource out of it (PNGs, MIDI files, `lang.*`; no
+`.class` files or manifest) into `data.new/`, then swaps it in as `data/`
+with a `.prepared` marker (hash + layout version). `assets.rs` reads
+`data/` into memory at start and serves the same paths the Java used
+(`/frontpage.png`, `/sound/opening.mid`, ...).
+
+The JAR can come from four places, checked in this order:
+
+1. `--prepare --game <jar>`: RecompLauncher's setup step. No window; prints
+   `progress <0..1> <text>` lines and exits 0, or with an error code.
+2. `--game <jar>`: prepares on start if `data/` isn't ready.
+3. A supported `.jar` next to the executable.
+4. The first-start screen: drop the file on the window or pick it (SDL3's
+   file dialog).
+
+Exit codes (also in `recomplauncher.json`): 2 can't read the JAR, 3 not the
+supported JAR, 4 the game folder isn't writable, 5 not set up and no JAR
+given.
+
+## RecompLauncher
+
+`recomplauncher.json` (validated against the launcher's schema) asks for the
+JAR as a named game input (`{input:jar}`), runs `--prepare` as the setup
+step, maps `settings.toml` to the launcher's settings page, lists `save/`
+for backups and `logs/` for crash reports, and explains the exit codes. The
+game reads `RECOMPLAUNCHER_MODE` (Big Picture starts full screen) and keeps
+SDL's background controller input off unless the player turns it on, since
+the launcher's overlay uses the controller too.
+
 ## Saves
 
 `save/Phoenix7.rms` holds a list of records written with Java's
@@ -90,10 +128,13 @@ battle state (spiders, eggs, webs, shots, weapons).
 
 ## Testing
 
-`main.rs` has a headless mode that runs a key script and saves screenshots:
+`main.rs` has a headless mode that runs a key script and saves screenshots.
+`PHANTOM_SPIDER_HOME` moves the whole game folder (save, data, logs,
+settings) so tests never touch a real one:
 
 ```bash
-PHANTOM_SPIDER_DATA=/tmp/save ./phantom-spider --headless --script tests/scripts/smoke.txt --out shots
+PHANTOM_SPIDER_HOME=/tmp/ps ./phantom-spider --headless --game game-files/Phantom_Spider_s40v2.jar \
+    --script tests/scripts/smoke.txt --out shots
 ```
 
 Script commands: `wait <ms>`, `press|release|tap <key>` (keys: `up`,
@@ -101,8 +142,8 @@ Script commands: `wait <ms>`, `press|release|tap <key>` (keys: `up`,
 code such as `53` for keypad 5), `shot <file.png>`, `pos <tag>` (ship
 position), `stat <tag>` (state, score, life, spiders, level), `quit`.
 Lines starting with `#` are ignored. `tools/run-tests.sh` runs everything in
-`tests/scripts/`. Always set `PHANTOM_SPIDER_DATA` for tests so they don't
-write to the real save folder.
+`tests/scripts/` with your JAR from `game-files/` (or `PHANTOM_SPIDER_JAR`).
+`cargo test` renders the first-start screen to `target/setup-screen-*.png`.
 
 Things to know when writing scripts: a fresh save starts the main menu at
 "New game"; digits typed on the game canvases also act as keypad directions
