@@ -12,6 +12,7 @@ mod log;
 mod midp;
 mod paths;
 mod settings;
+mod pads;
 mod setup;
 
 use midp::{assets, audio, font, gfx, lang, lcdui};
@@ -20,6 +21,7 @@ use audio::Audio;
 use game::Game;
 use gfx::{Graphics, SCREEN_H, SCREEN_W};
 use lcdui::{K_CLEAR, K_DOWN, K_FIRE, K_LEFT, K_RIGHT, K_SOFT_L, K_SOFT_R, K_UP};
+use pads::{PadAction, Pads};
 use settings::Settings;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -170,8 +172,6 @@ struct Input {
 }
 
 const SRC_KEY: u64 = 1 << 40;
-const SRC_PAD: u64 = 2 << 40;
-const SRC_AXIS: u64 = 3 << 40;
 
 impl Input {
     fn new() -> Input {
@@ -215,6 +215,21 @@ impl Input {
             self.release(s, game, font);
         }
     }
+    /// Apply what a controller event means (see `pads`).
+    fn pad(&mut self, actions: Vec<PadAction>, game: &mut Game, font: &font::Font) {
+        for a in actions {
+            match a {
+                PadAction::Press(src, code) => self.press(src, code, game, font),
+                PadAction::Release(src) => self.release(src, game, font),
+                PadAction::ReleaseAllFrom(id) => {
+                    let srcs: Vec<u64> = self.sources.keys().copied().filter(|&s| pads::src_is_from(s, id)).collect();
+                    for s in srcs {
+                        self.release(s, game, font);
+                    }
+                }
+            }
+        }
+    }
     /// Auto-repeat directions on menus/forms (canvases ignore repeats).
     fn tick(&mut self, dt: f64, game: &mut Game, font: &font::Font) {
         if !game.screen_is_form() {
@@ -253,22 +268,6 @@ fn map_key(k: sdl3::keyboard::Keycode) -> Option<i32> {
         K::_7 | K::Kp7 => 55,
         K::_8 | K::Kp8 => 56,
         K::_9 | K::Kp9 => 57,
-        _ => return None,
-    })
-}
-
-fn map_button(b: sdl3::gamepad::Button) -> Option<i32> {
-    use sdl3::gamepad::Button as B;
-    Some(match b {
-        B::DPadUp => K_UP,
-        B::DPadDown => K_DOWN,
-        B::DPadLeft => K_LEFT,
-        B::DPadRight => K_RIGHT,
-        B::South | B::West => K_FIRE,
-        B::East | B::Start => K_SOFT_R,
-        B::North | B::Back => K_SOFT_L,
-        B::LeftShoulder => K_LEFT,
-        B::RightShoulder => K_RIGHT,
         _ => return None,
     })
 }
@@ -452,7 +451,8 @@ fn setup_screen(
     canvas: &mut sdl3::render::WindowCanvas,
     tex: &mut sdl3::render::Texture,
     events: &mut sdl3::EventPump,
-    pads: &sdl3::GamepadSubsystem,
+    sub: &sdl3::GamepadSubsystem,
+    pads: &mut Pads,
     g: &mut Graphics,
     data: &Path,
 ) -> Result<bool, String> {
@@ -461,11 +461,19 @@ fn setup_screen(
     let mut status: Option<(String, bool)> = None; // (text, is_error)
     let picked: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
     let mut dialog_open = false;
-    let mut open_pads = Vec::new();
+    pads.sync(sub);
     loop {
         let mut try_jar: Option<PathBuf> = None;
         let mut browse = false;
         for ev in events.poll_iter() {
+            // any controller: Fire / A or the left soft key picks a file, B / Start quits
+            for a in pads.handle(sub, &ev) {
+                match a {
+                    PadAction::Press(_, K_FIRE | K_SOFT_L) => browse = true,
+                    PadAction::Press(_, K_SOFT_R) => return Ok(false),
+                    _ => {}
+                }
+            }
             match ev {
                 Event::Quit { .. } => return Ok(false),
                 Event::DropFile { filename, .. } => try_jar = Some(PathBuf::from(filename)),
@@ -474,19 +482,6 @@ fn setup_screen(
                     Keycode::Escape => return Ok(false),
                     _ => {}
                 },
-                Event::GamepadAdded { which, .. } => {
-                    if let Ok(p) = pads.open(which) {
-                        open_pads.push(p);
-                    }
-                }
-                Event::GamepadButtonDown { button, .. } => {
-                    use sdl3::gamepad::Button as B;
-                    match button {
-                        B::South | B::West | B::North | B::Back => browse = true,
-                        B::East | B::Start => return Ok(false),
-                        _ => {}
-                    }
-                }
                 _ => {}
             }
         }
@@ -598,7 +593,8 @@ fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font)
     sdl3::hint::set("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", if s.background_input { "1" } else { "0" });
     let sdl = sdl3::init().map_err(|e| e.to_string())?;
     let video = sdl.video().map_err(|e| e.to_string())?;
-    let pads = sdl.gamepad().map_err(|e| e.to_string())?;
+    let pad_sub = sdl.gamepad().map_err(|e| e.to_string())?;
+    let mut pads = Pads::new();
 
     let bigpicture = std::env::var("RECOMPLAUNCHER_MODE").is_ok_and(|m| m == "bigpicture");
     let scale = o.scale.unwrap_or(s.scale);
@@ -623,7 +619,7 @@ fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font)
     tex.set_scale_mode(sdl3::render::ScaleMode::Nearest);
     let mut events = sdl.event_pump().map_err(|e| e.to_string())?;
 
-    if !setup::prepared(data) && !setup_screen(&mut canvas, &mut tex, &mut events, &pads, g, data)? {
+    if !setup::prepared(data) && !setup_screen(&mut canvas, &mut tex, &mut events, &pad_sub, &mut pads, g, data)? {
         log!("setup cancelled");
         return Ok(());
     }
@@ -645,13 +641,16 @@ fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font)
     }
     let mut abuf: Vec<f32> = Vec::new();
 
-    let mut pads_open: HashMap<u32, sdl3::gamepad::Gamepad> = HashMap::new();
-    let mut axis_state: HashMap<(u32, u8), i32> = HashMap::new();
     let mut input = Input::new();
+    // pads already connected (or connected during setup) are opened here
+    let gone = pads.sync(&pad_sub);
+    input.pad(gone, game, font);
     let mut last = Instant::now();
 
     while !game.quit {
         for ev in events.poll_iter() {
+            let actions = pads.handle(&pad_sub, &ev);
+            input.pad(actions, game, font);
             match ev {
                 Event::Quit { .. } => {
                     game.ps_destroy();
@@ -698,73 +697,6 @@ fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font)
                         input.release(src, game, font);
                     }
                 }
-                Event::GamepadAdded { which, .. } => {
-                    if let Ok(p) = pads.open(which) {
-                        pads_open.insert(which.into(), p);
-                    }
-                }
-                Event::GamepadRemoved { which, .. } => {
-                    let which: u32 = which.into();
-                    pads_open.remove(&which);
-                    // drop anything this pad was holding
-                    let srcs: Vec<u64> = input
-                        .sources
-                        .keys()
-                        .copied()
-                        .filter(|s| (s & 0xff_ffff_ffff) >> 8 == which as u64 && s >> 40 >= 2)
-                        .collect();
-                    for s in srcs {
-                        input.release(s, game, font);
-                    }
-                }
-                Event::GamepadButtonDown { which, button, .. } => {
-                    let which: u32 = which.into();
-                    if let Some(code) = map_button(button) {
-                        input.press(SRC_PAD | (which as u64) << 8 | button as u64, code, game, font);
-                    }
-                }
-                Event::GamepadButtonUp { which, button, .. } => {
-                    let which: u32 = which.into();
-                    if map_button(button).is_some() {
-                        input.release(SRC_PAD | (which as u64) << 8 | button as u64, game, font);
-                    }
-                }
-                Event::GamepadAxisMotion { which, axis, value, .. } => {
-                    let which: u32 = which.into();
-                    use sdl3::gamepad::Axis;
-                    let v = value as i32;
-                    let (id, neg, pos): (u8, i32, i32) = match axis {
-                        Axis::LeftX => (0, K_LEFT, K_RIGHT),
-                        Axis::LeftY => (1, K_UP, K_DOWN),
-                        Axis::TriggerRight => (2, 0, K_FIRE),
-                        Axis::TriggerLeft => (3, 0, K_SOFT_L),
-                        _ => continue,
-                    };
-                    // hysteresis: engage at 50%, release at 30%
-                    let prev = *axis_state.get(&(which, id)).unwrap_or(&0);
-                    let now = if v > 16000 || (prev > 0 && v > 9800) {
-                        1
-                    } else if v < -16000 || (prev < 0 && v < -9800) {
-                        -1
-                    } else {
-                        0
-                    };
-                    if now != prev {
-                        let src = SRC_AXIS | (which as u64) << 8 | id as u64;
-                        input.release(src, game, font);
-                        let code = if now > 0 {
-                            pos
-                        } else if now < 0 {
-                            neg
-                        } else {
-                            0
-                        };
-                        if code != 0 {
-                            input.press(src, code, game, font);
-                        }
-                        axis_state.insert((which, id), now);
-                    }
-                }
                 _ => {}
             }
         }
@@ -781,9 +713,7 @@ fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font)
 
         if let Some((lo, hi, ms)) = game.rumble.take() {
             if rumble {
-                for p in pads_open.values_mut() {
-                    let _ = p.set_rumble(lo, hi, ms);
-                }
+                pads.rumble(lo, hi, ms);
             }
         }
 
