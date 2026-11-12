@@ -1,5 +1,5 @@
 # Smoke test: splash, main menu, new game, a mission, firing, web hit, pause to menu.
-# Run: phantom-spider --headless --script tests/scripts/smoke.txt --out <dir>
+# Run all scripts with tools/run-tests.sh (needs your JAR in game-files/).
 wait 500
 shot 00_splash.png
 wait 25000
