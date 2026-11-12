@@ -1,4 +1,4 @@
-# Phantom Spider RE
+# <img src="docs/images/phantom-spider-icon.png" alt="" width="30" height="30"> Phantom Spider RE
 
 A native Windows/Linux port of **Phantom Spider**, a 2004 Nokia Series 40
 J2ME shooter. You pilot the Phantom Spider against the Evil Tarantula's
@@ -120,8 +120,8 @@ for how the port is organized.
 
 Phantom Spider (2004) lists its vendor as **ANDREW-LVIV / Nokia**. All rights
 to the original game, its name, artwork, music and text belong to their
-respective owners. This repository and its releases contain none of the
-original game's files; the screenshots above show the game running.
+respective owners. The icon above comes from the original JAR. The
+screenshots show the port running. Players supply their own JAR.
 
 This project is not affiliated with or endorsed by Nokia or ANDREW-LVIV.
 The port's source code is released under the [MIT License](LICENSE).
