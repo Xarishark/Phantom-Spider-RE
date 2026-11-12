@@ -25,7 +25,7 @@ included here or in the releases.
    [Releases](https://github.com/Xarishark/phantom-spider-re/releases) and
    unzip it somewhere you can write to (not Program Files).
 2. Run `PhantomSpider.exe`. On the first start it asks for the JAR: drop it
-   on the window, or press Fire / A to pick it. (A JAR placed next to the
+   on the window, or press Enter to pick it. (A JAR placed next to the
    exe, or `--game <path>`, works too.)
 3. The game checks the file and unpacks its art, music and text into
    `data/`. From then on it starts straight into the game.
@@ -44,6 +44,8 @@ game's page, backs up your saves, and attaches the log to crash reports.
 Big Picture mode starts the game full screen.
 
 ## Controls
+
+The game starts in full screen by default. Press F11 or Alt+Enter to switch to a window.
 
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |

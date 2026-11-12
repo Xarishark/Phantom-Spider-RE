@@ -1,6 +1,7 @@
 [package]
 name = "phantom-spider-re"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["Zacharias Xenakis (Xarishark)"]
 edition = "2021"
 description = "Phantom Spider RE: native PC port of the 2004 Nokia Series 40 J2ME game"
 license = "MIT"

@@ -25,7 +25,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             scale: 5,
-            fullscreen: false,
+            fullscreen: true,
             scaling: "sharp".into(),
             volume: 100,
             music: true,
@@ -42,7 +42,7 @@ const TEMPLATE: &str = r#"# Phantom Spider RE settings. Command-line options ove
 scale = 5
 
 # Start in full screen (F11 or Alt+Enter switches while playing).
-fullscreen = false
+fullscreen = true
 
 # "sharp": whole-pixel scaling, crisp but with borders.
 # "fill": as large as the window allows, keeping the shape.

@@ -28,7 +28,7 @@
       "file": [{ "path": "{install}/settings.toml" }],
       "new": {
         "scale": "5",
-        "fullscreen": "false",
+        "fullscreen": "true",
         "scaling": "\"sharp\"",
         "volume": "100",
         "music": "true",
@@ -48,7 +48,7 @@
         { "label": "Off", "set": { "fullscreen": "false" } },
         { "label": "On", "set": { "fullscreen": "true" } }
       ],
-      "defaults": { "fullscreen": "false" }
+      "defaults": { "fullscreen": "true" }
     },
     {
       "id": "scale",

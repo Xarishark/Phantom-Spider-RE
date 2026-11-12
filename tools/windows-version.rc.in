@@ -1,0 +1,27 @@
+#include <winver.h>
+
+1 VERSIONINFO
+FILEVERSION @NUMERIC_VERSION@
+PRODUCTVERSION @NUMERIC_VERSION@
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "@AUTHOR@"
+            VALUE "FileDescription", "Phantom Spider RE"
+            VALUE "FileVersion", "@VERSION@"
+            VALUE "InternalName", "phantom-spider"
+            VALUE "LegalCopyright", "Copyright (c) 2026 @AUTHOR@"
+            VALUE "OriginalFilename", "PhantomSpider.exe"
+            VALUE "ProductName", "Phantom Spider RE"
+            VALUE "ProductVersion", "@VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

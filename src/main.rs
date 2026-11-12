@@ -556,7 +556,7 @@ fn draw_setup(g: &mut Graphics, status: &Option<(String, bool)>) {
     y += 3;
     match status {
         Some((text, err)) => para(g, text, if *err { (255, 90, 90) } else { (120, 255, 120) }, &mut y),
-        None => para(g, "Drop it on this window, or press Fire / A to pick it.", (230, 230, 255), &mut y),
+        None => para(g, "Drop it here or press Enter to pick it.", (230, 230, 255), &mut y),
     }
     g.set_color(31, 0, 108);
     g.fill_rect(0, 117, 128, 11);
