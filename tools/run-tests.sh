@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Runs every headless test script against a release build.
-# Screenshots go to target/test-shots/<script>/, saves to a temp folder
+# Screenshots go to <target dir>/test-shots/<script>/, saves to a temp folder
 # (never to the real save folder next to the binary).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 cargo build --release || exit 1
-bin=target/release/phantom-spider
-[ -x "$bin" ] || bin=target/release/phantom-spider.exe
+target=${CARGO_TARGET_DIR:-target}
+bin=$target/release/phantom-spider
+[ -x "$bin" ] || bin=$target/release/phantom-spider.exe
 fail=0
 for script in tests/scripts/*.txt; do
     name=$(basename "$script" .txt)
-    out=target/test-shots/$name
+    out=$target/test-shots/$name
     data=$(mktemp -d)
     log=$(mktemp)
     rm -rf "$out"
