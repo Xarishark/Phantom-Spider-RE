@@ -1,7 +1,7 @@
 //! `r` (base actor), `z` (enemy tarantula) and `l` (the pilot's ship).
 
 use super::{load, part, rnd, Images};
-use crate::gfx::{Graphics, Res, Sprite, NPE};
+use crate::midp::gfx::{Graphics, Res, Sprite, NPE};
 
 /// `r()` constructor: loads the static `r.g` and builds the sprite.
 fn r_ctor(img: &mut Images) -> Option<Sprite> {

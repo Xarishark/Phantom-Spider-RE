@@ -1,8 +1,8 @@
 //! High-level LCDUI screens (List, Form, Alert) drawn into the 128x128
 //! framebuffer in a style matching the game.
 
-use crate::gfx::{Graphics, HCENTER, LEFT, RIGHT, SCREEN_H, SCREEN_W, TOP};
-use crate::lang;
+use crate::midp::gfx::{Graphics, HCENTER, LEFT, RIGHT, SCREEN_H, SCREEN_W, TOP};
+use crate::midp::lang;
 
 // MIDP / Nokia key codes
 pub const K_UP: i32 = -1;
@@ -230,7 +230,7 @@ impl Screen {
 
     /// Handle a key press; returns a command to dispatch to commandAction.
     /// `Err(())` means "dismiss alert".
-    pub fn key(&mut self, key: i32, font: &crate::font::Font) -> Result<Option<Cmd>, ()> {
+    pub fn key(&mut self, key: i32, font: &crate::midp::font::Font) -> Result<Option<Cmd>, ()> {
         match self.kind {
             Kind::Alert => {
                 if matches!(key, K_FIRE | K_SOFT_L | K_SOFT_R) {
@@ -298,7 +298,7 @@ impl Screen {
     }
 
     /// Lines of a form: (text, kind) where kind: 0 text, 1 field box (item, stop), 2 choice option
-    fn layout(&self, font: &crate::font::Font) -> Vec<(String, Option<usize>, u8)> {
+    fn layout(&self, font: &crate::midp::font::Font) -> Vec<(String, Option<usize>, u8)> {
         let mut out = Vec::new();
         let w = SCREEN_W - 8;
         let mut stop = 0;

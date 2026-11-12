@@ -9,7 +9,7 @@
 //! that still runs at the original rate (the tutorial).
 
 use super::{load, part, Images, St};
-use crate::gfx::{Graphics, Res, LEFT, TOP};
+use crate::midp::gfx::{Graphics, Res, LEFT, TOP};
 
 const TL: i32 = TOP | LEFT;
 

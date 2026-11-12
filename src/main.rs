@@ -3,14 +3,10 @@
 
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-mod assets;
-mod audio;
-mod font;
 mod game;
-mod gfx;
-mod lang;
-mod lcdui;
-mod rms;
+mod midp;
+
+use midp::{assets, audio, font, gfx, lang, lcdui, rms};
 
 use audio::Audio;
 use game::Game;

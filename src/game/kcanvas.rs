@@ -4,9 +4,9 @@
 use super::eyes::v_draw;
 use super::spider::{Plane, Z};
 use super::{load, rnd, Eye, Game, Images, Snd};
-use crate::gfx::{Graphics, Res, HCENTER, LEFT, TOP};
-use crate::lang;
-use crate::lcdui::{game_action, K_FIRE, K_SOFT_R};
+use crate::midp::gfx::{Graphics, Res, HCENTER, LEFT, TOP};
+use crate::midp::lang;
+use crate::midp::lcdui::{game_action, K_FIRE, K_SOFT_R};
 
 const TL: i32 = TOP | LEFT;
 const TC: i32 = TOP | HCENTER;
@@ -581,7 +581,7 @@ impl Game {
             g.set_color(255, 204, 4);
             g.draw_rect(10, 59, 51, 20);
             g.set_color(255, 255, 255);
-            g.draw_string(jj.get(v3 as usize).ok_or(crate::gfx::AIOOBE)?, 18, 65, TL);
+            g.draw_string(jj.get(v3 as usize).ok_or(crate::midp::gfx::AIOOBE)?, 18, 65, TL);
             Self::k_chevron(g, 1, 67);
         } else {
             Self::k_chevron(g, 0, 47);
@@ -593,7 +593,7 @@ impl Game {
             self.st.k_y = 0;
         }
         g.set_color(255, 255, 255);
-        g.draw_string(kk.get(v4 as usize).ok_or(crate::gfx::AIOOBE)?, 8, 45, TL);
+        g.draw_string(kk.get(v4 as usize).ok_or(crate::midp::gfx::AIOOBE)?, 8, 45, TL);
         g.draw_image(&self.img.k_j, 60, 39, TL)?;
         g.set_color(0, 0, 0);
         g.fill_rect(22, 83, 100, 18);

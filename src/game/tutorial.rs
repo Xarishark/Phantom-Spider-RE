@@ -6,8 +6,8 @@ use super::kcanvas::k_strings_J;
 use super::sfx::SFx;
 use super::spider::{Plane, Z};
 use super::{hit, rnd, Game, Images};
-use crate::gfx::{Graphics, Res, LEFT, TOP};
-use crate::lang;
+use crate::midp::gfx::{Graphics, Res, LEFT, TOP};
+use crate::midp::lang;
 
 const TL: i32 = TOP | LEFT;
 const BL: i32 = 32 | LEFT;

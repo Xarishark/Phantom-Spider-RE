@@ -3,10 +3,10 @@
 //! are replaced with a notice.
 
 use super::{Cur, Eye, Game};
-use crate::gfx::Res;
-use crate::lang;
-use crate::lcdui::{Cmd, Item, Screen, Tag};
-use crate::rms::W;
+use crate::midp::gfx::Res;
+use crate::midp::lang;
+use crate::midp::lcdui::{Cmd, Item, Screen, Tag};
+use crate::midp::rms::W;
 use std::collections::HashMap;
 
 const STORE: &str = "Phoenix7";

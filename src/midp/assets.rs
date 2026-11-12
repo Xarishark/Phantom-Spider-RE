@@ -1,6 +1,6 @@
 //! Resources from the original JAR, embedded at build time.
 
-use crate::gfx::{Image, Img};
+use crate::midp::gfx::{Image, Img};
 use std::rc::Rc;
 
 include!(concat!(env!("OUT_DIR"), "/assets_gen.rs"));

@@ -36,7 +36,7 @@ fn read_utf(d: &[u8], off: usize) -> Option<String> {
 
 /// Loads `/lang.<locale>`, falling back to `/lang.xx` like the original.
 pub fn init(locale: &str) {
-    let data = crate::assets::get(&format!("/lang.{locale}")).or_else(|| crate::assets::get("/lang.xx"));
+    let data = crate::midp::assets::get(&format!("/lang.{locale}")).or_else(|| crate::midp::assets::get("/lang.xx"));
     let mut v = Vec::new();
     if let Some(d) = data {
         let n = u16::from_be_bytes([d[0], d[1]]) as usize / 2;

@@ -2,7 +2,8 @@
 //!
 //! Naming: every Java static `Cls.fld` lives in [`St`] / [`Images`] as
 //! `Cls_fld` so the code can be checked line by line against
-//! `reference/java/`. Instance state lives in the per-object structs.
+//! the decompiled Java (see `tools/decompile.sh`). Instance state lives in
+//! the per-object structs.
 
 #![allow(non_snake_case)]
 
@@ -16,10 +17,10 @@ pub mod sfx;
 pub mod spider;
 pub mod tutorial;
 
-use crate::assets;
-use crate::audio::Audio;
-use crate::gfx::{Img, Res};
-use crate::lcdui::Screen;
+use crate::midp::assets;
+use crate::midp::audio::Audio;
+use crate::midp::gfx::{Img, Res};
+use crate::midp::lcdui::Screen;
 use std::cell::Cell;
 
 // ---------------------------------------------------------------- class m
@@ -427,8 +428,8 @@ impl Snd {
     }
     /// `b()`: getState() == CLOSED (NPE if never created)
     pub fn is_closed(&self, au: &Audio) -> Res<bool> {
-        let c = self.c.ok_or(crate::gfx::NPE)?;
-        Ok(au.state(c) == crate::audio::CLOSED)
+        let c = self.c.ok_or(crate::midp::gfx::NPE)?;
+        Ok(au.state(c) == crate::midp::audio::CLOSED)
     }
     fn create(&mut self, au: &mut Audio, path: &str) {
         self.c = assets::get(path).and_then(|d| au.create(d));
@@ -440,7 +441,7 @@ impl Snd {
     fn play(&mut self, au: &mut Audio, path: &str, v3: i32) {
         // D.b is always true (sound on)
         if let (true, Some(c)) = (v3 == self.a, self.c) {
-            if au.state(c) != crate::audio::CLOSED {
+            if au.state(c) != crate::midp::audio::CLOSED {
                 au.stop(c);
                 if v3 == 1 || v3 == 3 {
                     au.set_loop_count(c, -1);
@@ -524,10 +525,10 @@ impl Game {
     /// `Display.setCurrent`
     pub fn set_current(&mut self, d: Cur) {
         if let Cur::Scr(s) = &d {
-            if s.kind == crate::lcdui::Kind::Alert {
+            if s.kind == crate::midp::lcdui::Kind::Alert {
                 self.alert_left_ms = s.timeout_ms;
                 let prev = std::mem::replace(&mut self.cur, Cur::None);
-                if !matches!(&prev, Cur::Scr(p) if p.kind == crate::lcdui::Kind::Alert) {
+                if !matches!(&prev, Cur::Scr(p) if p.kind == crate::midp::lcdui::Kind::Alert) {
                     self.after_alert = Some(prev);
                 }
                 self.cur = d;
@@ -608,7 +609,7 @@ impl Game {
     }
 
     /// Key press from the platform (MIDP key code).
-    pub fn key_pressed(&mut self, code: i32, repeat: bool, font: &crate::font::Font) {
+    pub fn key_pressed(&mut self, code: i32, repeat: bool, font: &crate::midp::font::Font) {
         match &mut self.cur {
             Cur::K => {
                 if !repeat {
@@ -643,7 +644,7 @@ impl Game {
         matches!(&self.cur, Cur::Scr(_))
     }
 
-    fn paint_canvas(&mut self, g: &mut crate::gfx::Graphics) {
+    fn paint_canvas(&mut self, g: &mut crate::midp::gfx::Graphics) {
         if let Cur::K = self.cur {
             self.k_paint(g);
         }
@@ -653,10 +654,10 @@ impl Game {
     /// Advance time by `dt_ms`: alert timeouts, audio events, the shooting
     /// game at a fixed 60 Hz, the menu canvas at its original repaint
     /// period (`h`), and drawing.
-    pub fn update(&mut self, dt_ms: f64, g: &mut crate::gfx::Graphics) {
+    pub fn update(&mut self, dt_ms: f64, g: &mut crate::midp::gfx::Graphics) {
         self.audio_events();
         if let Cur::Scr(s) = &self.cur {
-            if s.kind == crate::lcdui::Kind::Alert {
+            if s.kind == crate::midp::lcdui::Kind::Alert {
                 self.alert_left_ms -= dt_ms as i32;
                 if self.alert_left_ms <= 0 {
                     self.dismiss_alert();

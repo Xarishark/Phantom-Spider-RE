@@ -1,8 +1,8 @@
 //! `J` (eye collection), `v` (eye) and `j` (pilot stats).
 
 use super::{load, Eye, Game};
-use crate::gfx::{Graphics, Img, Res, AIOOBE, LEFT, TOP};
-use crate::lang;
+use crate::midp::gfx::{Graphics, Img, Res, AIOOBE, LEFT, TOP};
+use crate::midp::lang;
 
 const TL: i32 = TOP | LEFT;
 

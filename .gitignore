@@ -1,3 +1,5 @@
 /target/
 /dist/
 *.sf2
+# original JAR/JAD and decompiled Java: kept locally, not published
+/game-files/

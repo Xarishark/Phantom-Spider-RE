@@ -1,7 +1,7 @@
 //! Minimal re-implementation of the MIDP 2.0 `Graphics`, `Image` and
 //! `game.Sprite` classes, rendering into a 128x128 ARGB framebuffer.
 
-use crate::font::Font;
+use crate::midp::font::Font;
 use std::rc::Rc;
 
 pub const SCREEN_W: i32 = 128;

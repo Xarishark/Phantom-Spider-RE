@@ -9,9 +9,9 @@
 
 use super::spider::Plane;
 use super::{eyes::v_draw, load, part, rnd, Cur, Eye, Game, Images, Snd};
-use crate::gfx::{Graphics, OptExt, Res, HCENTER, LEFT, TOP};
-use crate::lang;
-use crate::lcdui::{game_action, K_FIRE, K_SOFT_L, K_SOFT_R};
+use crate::midp::gfx::{Graphics, OptExt, Res, HCENTER, LEFT, TOP};
+use crate::midp::lang;
+use crate::midp::lcdui::{game_action, K_FIRE, K_SOFT_L, K_SOFT_R};
 
 const TL: i32 = TOP | LEFT;
 const TC: i32 = TOP | HCENTER;

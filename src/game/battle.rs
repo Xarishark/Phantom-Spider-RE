@@ -14,7 +14,7 @@ use super::ents::{sparkle, Ent, Kind};
 use super::sfx::SFx;
 use super::spider::Z;
 use super::{hit, rnd, Game, Images, K_a};
-use crate::gfx::{Graphics, Jex, OptExt, Res, NPE};
+use crate::midp::gfx::{Graphics, Jex, OptExt, Res, NPE};
 
 const G_P: usize = 20; // max weapons
 const G_A: i32 = 5; // basic shots
@@ -82,7 +82,7 @@ impl Game {
     }
     /// `i.b(slot, life, speed, attack, defence, size)`
     fn i_spawn(&mut self, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32) -> Res {
-        let slot = self.bat.h.e.get_mut(v1 as usize).ok_or(crate::gfx::AIOOBE)?;
+        let slot = self.bat.h.e.get_mut(v1 as usize).ok_or(crate::midp::gfx::AIOOBE)?;
         let mut z = Z::new(&mut self.img);
         z.set_stats(v2, v3, v4, v5);
         z.set_size(v6);
@@ -92,7 +92,7 @@ impl Game {
     }
     fn i_slot(&mut self, i: i32) -> Res<&mut Z> {
         if i < 0 {
-            return Err(crate::gfx::AIOOBE);
+            return Err(crate::midp::gfx::AIOOBE);
         }
         self.zm(i as usize)
     }
@@ -608,7 +608,7 @@ impl Game {
         if s != -1 {
             if s != 0 && s != 9 && s != 5 && s != 8 {
                 let b = self.st.G_b as usize;
-                let d = self.bat.d.get_mut(b).ok_or(crate::gfx::AIOOBE)?.npe_mut()?;
+                let d = self.bat.d.get_mut(b).ok_or(crate::midp::gfx::AIOOBE)?.npe_mut()?;
                 if !d.d {
                     if s == 1 {
                         if b % 2 == 0 {

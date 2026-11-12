@@ -5,7 +5,7 @@
 //! [`SFx::tick`] and [`SFx::draw`] only shows what the last tick produced.
 
 use super::{load, Images, St};
-use crate::gfx::{Graphics, Res, LEFT, TOP};
+use crate::midp::gfx::{Graphics, Res, LEFT, TOP};
 
 #[derive(Default, Clone, Copy)]
 pub struct M {
@@ -94,10 +94,10 @@ impl SFx {
                 g.reset_clip();
             } else {
                 let ci = c as usize;
-                let s = *SZ.get(ci).ok_or(crate::gfx::AIOOBE)?;
+                let s = *SZ.get(ci).ok_or(crate::midp::gfx::AIOOBE)?;
                 g.set_clip(m.a, m.c, s[0], s[1]);
                 // `b + 1 % n` parses as `b + (1 % n)` == b + 1
-                g.draw_image(img.s_f.get(ci).ok_or(crate::gfx::AIOOBE)?, m.a - s[0] * (m.b + 1), m.c, TOP | LEFT)?;
+                g.draw_image(img.s_f.get(ci).ok_or(crate::midp::gfx::AIOOBE)?, m.a - s[0] * (m.b + 1), m.c, TOP | LEFT)?;
                 g.reset_clip();
             }
         }
