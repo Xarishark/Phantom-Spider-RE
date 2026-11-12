@@ -32,6 +32,7 @@ pub fn game_action(key: i32) -> i32 {
 
 /// The midlet's Command objects.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code)] // Cancel was only used by the SMS waiting screen
 pub enum Cmd {
     /// N: Select (SCREEN)
     N,
@@ -68,6 +69,7 @@ impl Cmd {
 
 /// Identity of a screen, standing in for `var2 == this.O` comparisons.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code)] // the SMS challenge screens are stubbed out on PC
 pub enum Tag {
     /// main menu List O
     O,
@@ -98,6 +100,7 @@ pub enum Tag {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)] // Gauge was only used by the SMS waiting screen
 pub enum Item {
     Text(String),
     Field { label: String, text: String, max: usize },

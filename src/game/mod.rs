@@ -138,6 +138,7 @@ pub struct Images {
 }
 
 // ---------------------------------------------------------------- statics
+#[allow(dead_code)] // some fields only fed the SMS challenge, kept to mirror the original
 pub struct St {
     // E
     pub E_f: String,

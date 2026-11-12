@@ -113,9 +113,6 @@ impl Graphics {
     pub fn set_color(&mut self, r: i32, g: i32, b: i32) {
         self.color = 0xff00_0000 | ((r as u32 & 0xff) << 16) | ((g as u32 & 0xff) << 8) | (b as u32 & 0xff);
     }
-    pub fn set_color_rgb(&mut self, rgb: u32) {
-        self.color = 0xff00_0000 | (rgb & 0xff_ffff);
-    }
 
     pub fn set_clip(&mut self, x: i32, y: i32, w: i32, h: i32) {
         let x0 = x.max(0);
