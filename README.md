@@ -34,6 +34,24 @@ Saves go to `%APPDATA%\PhantomSpider\Phoenix7.rms`
 
 Gamepads are hot-pluggable; any number may be connected at once.
 
+## 60 fps
+
+The phone updated the game once per repaint, every 150 ms (100 ms from
+pilot level 100), so everything moved in 3 to 15 px jumps at ~6.7 fps. The
+shooting game here runs at a fixed 60 Hz without changing its pace:
+
+- **Every 1/60 s:** movement (each object covers exactly its original
+  per-frame distance spread over the 9 or 6 sub-steps), your direction
+  input, and hits that use up a projectile (shots, missiles, eggs).
+- **Once per original frame:** everything the original counted in frames:
+  AI decisions, fire cooldown, weapon charge, animation frames, missile
+  acceleration, and damage from things that stay on a target (lasers,
+  protectors, burns, a spider touching you, a web holding you).
+
+Scripted comparisons against the 6.7 fps build give the same movement per
+second, mission scores and damage taken (within run-to-run noise). The menu
+screens still update at the original rate since nothing moves there.
+
 ## What changed from the phone version
 
 - The SMS "Challenge player" mode needs a phone network, so it only shows

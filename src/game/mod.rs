@@ -513,6 +513,11 @@ pub struct Game {
     pub rumble: Option<(u16, u16, u32)>,
     acc_ms: f64,
     blink_ms: f64,
+    sim_acc: f64,
+    /// 60 fps sub-step index within the current original frame, and the
+    /// number of sub-steps per original frame (9 at 150 ms, 6 at 100 ms)
+    pub sk: i32,
+    pub sn: i32,
 }
 
 impl Game {
@@ -589,6 +594,9 @@ impl Game {
             rumble: None,
             acc_ms: 0.0,
             blink_ms: 0.0,
+            sim_acc: 0.0,
+            sk: 0,
+            sn: 9,
         };
         g.st.k_ab = "50001".into();
         g.k_ctor();
@@ -635,21 +643,16 @@ impl Game {
         matches!(&self.cur, Cur::Scr(_))
     }
 
-    fn paint_canvas(&mut self, g: &mut crate::gfx::Graphics, forced: bool) {
-        match self.cur {
-            Cur::K => self.k_paint(g),
-            Cur::L => {
-                if self.lc.i_a == 0 || forced {
-                    self.L_paint(g)
-                }
-            }
-            _ => {}
+    fn paint_canvas(&mut self, g: &mut crate::gfx::Graphics) {
+        if let Cur::K = self.cur {
+            self.k_paint(g);
         }
         g.reset_clip();
     }
 
-    /// Advance time by `dt_ms`: repaint thread (`h`), alert timeouts,
-    /// audio events, and drawing of high-level screens.
+    /// Advance time by `dt_ms`: alert timeouts, audio events, the shooting
+    /// game at a fixed 60 Hz, the menu canvas at its original repaint
+    /// period (`h`), and drawing.
     pub fn update(&mut self, dt_ms: f64, g: &mut crate::gfx::Graphics) {
         self.audio_events();
         if let Cur::Scr(s) = &self.cur {
@@ -661,18 +664,43 @@ impl Game {
             }
         }
         self.blink_ms += dt_ms;
+
+        if let Cur::L = self.cur {
+            self.show_paint = false;
+            if self.lc.i_a == 0 {
+                const STEP: f64 = 1000.0 / 60.0;
+                self.sim_acc += dt_ms;
+                let mut steps = 0;
+                while self.sim_acc >= STEP - 1e-6 {
+                    self.sim_acc -= STEP;
+                    self.L_tick();
+                    steps += 1;
+                    if steps >= 8 || !matches!(self.cur, Cur::L) || self.lc.i_a != 0 {
+                        self.sim_acc = 0.0;
+                        break;
+                    }
+                }
+            } else {
+                self.sim_acc = 0.0;
+            }
+            if let Cur::L = self.cur {
+                self.L_draw(g);
+                return;
+            }
+        }
+
         let period = self.st.h_b.max(10) as f64;
         self.acc_ms += dt_ms;
         if self.show_paint {
             self.show_paint = false;
             self.acc_ms = 0.0;
-            self.paint_canvas(g, true);
+            self.paint_canvas(g);
         } else if self.acc_ms >= period {
             self.acc_ms -= period;
             if self.acc_ms > period * 2.0 {
                 self.acc_ms = 0.0;
             }
-            self.paint_canvas(g, false);
+            self.paint_canvas(g);
         }
         let blink = (self.blink_ms as i64 / 400) % 2 == 0;
         if let Cur::Scr(s) = &mut self.cur {
@@ -686,4 +714,14 @@ impl Game {
     pub fn in_shooter(&self) -> bool {
         matches!(self.cur, Cur::L)
     }
+}
+
+/// Share of a per-frame distance `v` that sub-step `k` of `n` moves.
+/// The `n` shares always add up to exactly `v`, so 60 fps movement covers
+/// the same ground per original frame as the phone did.
+pub fn part(v: i32, k: i32, n: i32) -> i32 {
+    if n <= 1 {
+        return v;
+    }
+    (v * (k + 1)).div_euclid(n) - (v * k).div_euclid(n)
 }

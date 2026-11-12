@@ -1,14 +1,20 @@
 //! The abstract class `F` and its subclasses (projectiles, protectors,
 //! enemy eggs and webs). Java field shadowing is preserved explicitly:
 //! e.g. `q.j`/`f.j` are separate from `B.j`, and `a.a`/`a.h` shadow `F.a`/`F.h`.
+//!
+//! 60 fps model: the original `a()` (one update per 150 ms frame) is split
+//! into [`Ent::beat`] (discrete logic, run once per original frame, which
+//! also decides this beat's velocity) and [`Ent::sub`] (moves a fraction of
+//! that velocity every 1/60 s). [`Ent::update`] does both at once for code
+//! that still runs at the original rate (the tutorial).
 
-use super::{load, Images, St};
+use super::{load, part, Images, St};
 use crate::gfx::{Graphics, Res, LEFT, TOP};
 
 const TL: i32 = TOP | LEFT;
 
 /// `a.m` orbit table
-const PATH: [[i32; 2]; 13] = [
+pub const PATH: [[i32; 2]; 13] = [
     [37, 10], [32, 0], [27, -5], [16, -10], [-5, -5], [-10, 0], [-15, 10], [-10, 20], [-5, 25], [16, 30], [27, 25],
     [32, 20], [32, 20],
 ];
@@ -20,6 +26,21 @@ pub struct Prot {
     pub c: i32,
     pub a: i32,
     pub h: i32,
+    /// orbit offset at the start of this beat and at the next one (60 fps)
+    pub o0: [i32; 2],
+    pub o1: [i32; 2],
+}
+
+impl Prot {
+    fn offset(&self) -> [i32; 2] {
+        PATH[((self.i + self.c * 2) % 12) as usize]
+    }
+    /// One original frame of orbit progress (`i++` with wrap).
+    fn advance(&mut self) {
+        self.o0 = self.offset();
+        self.i = if self.i < 11 { self.i + 1 } else { 0 };
+        self.o1 = self.offset();
+    }
 }
 
 pub enum Kind {
@@ -44,12 +65,12 @@ pub enum Kind {
     /// `N extends a`
     ProtN { p: Prot, j: Box<[Ent; 3]>, l: bool, k: i32 },
     /// `O extends a`
-    ProtO { p: Prot, l: bool, k: i32, j: i32 },
+    ProtO { p: Prot, l: bool, k: i32 },
     /// `d`: flame earth
     D,
     /// `e`: spider egg
     Egg { i: i32, c: i32, j: i32 },
-    /// `t`: spider web
+    /// `t`: spider web. `c`: 0/-1 = still the projectile sprite, else web
     Web { c: i32, i: bool },
 }
 
@@ -62,10 +83,15 @@ pub struct Ent {
     pub h: i32,
     pub d: bool,
     pub kind: Kind,
+    /// velocity for the current beat (pixels per original frame)
+    pub vx: i32,
+    pub vy: i32,
+    /// launched since the last beat; gets its first beat on the next sub-step
+    pub fresh: bool,
 }
 
 fn base(b: i32, kind: Kind) -> Ent {
-    Ent { g: 0, e: 0, f: 0, b, a: 0, h: 0, d: false, kind }
+    Ent { g: 0, e: 0, f: 0, b, a: 0, h: 0, d: false, kind, vx: 0, vy: 0, fresh: false }
 }
 
 impl Ent {
@@ -102,7 +128,10 @@ impl Ent {
         e.d = true;
         e.g = -10;
         e.e = -10;
-        (e, Prot { i: 0, c: v1, a: 9, h: 9 })
+        let mut p = Prot { i: 0, c: v1, a: 9, h: 9, o0: [0; 2], o1: [0; 2] };
+        p.o0 = p.offset();
+        p.o1 = p.o0;
+        (e, p)
     }
     pub fn new_prot(v1: i32, v2: i32) -> Ent {
         let (mut e, p) = Self::prot_base(v1, v2);
@@ -120,7 +149,7 @@ impl Ent {
         p.i = 0;
         p.c = v1;
         e.d = true;
-        e.kind = Kind::ProtO { p, l: false, k: 0, j: 0 };
+        e.kind = Kind::ProtO { p, l: false, k: 0 };
         e
     }
     pub fn new_d(v: i32) -> Ent {
@@ -146,215 +175,164 @@ impl Ent {
             _ => None,
         }
     }
-    pub fn prot_mut(&mut self) -> Option<&mut Prot> {
-        match &mut self.kind {
-            Kind::Prot(p) | Kind::ProtN { p, .. } | Kind::ProtO { p, .. } => Some(p),
-            _ => None,
-        }
-    }
-
-    /// `B.a()` movement shared by B, q and (with f's own fields) f
-    fn missile_step(&mut self, side: i32, reset_speed: i32) -> i32 {
+    /// `B.a()` for B, q and f: returns the new sideways counter.
+    fn missile_beat(&mut self, side: i32, reset_speed: i32) -> i32 {
         let mut side = side;
+        self.vx = 0;
+        self.vy = 0;
         if self.e < 0 {
             self.d = false;
             self.b = reset_speed;
         } else {
             self.b += 1;
-            if self.f < 5 {
-                self.e += self.b;
-            } else {
-                self.e -= self.b;
-            }
+            self.vy = if self.f < 5 { self.b } else { -self.b };
             self.f += 1;
             if side != 0 {
                 if side < 0 {
                     side += 1;
-                    self.g -= self.b / 2;
+                    self.vx = -(self.b / 2);
                 } else {
                     side -= 1;
-                    self.g += self.b / 2;
+                    self.vx = self.b / 2;
                 }
             }
         }
         side
     }
 
-    fn prot_step(&mut self) {
-        let (i, c) = match self.prot() {
-            Some(p) => (p.i, p.c),
-            None => return,
-        };
-        let idx = ((i + c * 2) % 12) as usize;
-        self.g += PATH[idx][0];
-        self.e += PATH[idx][1];
-        if let Some(p) = self.prot_mut() {
-            if p.i < 11 {
-                p.i += 1;
-            } else {
-                p.i = 0;
-            }
+    /// Discrete part of the original `a()`: timers, animation frames,
+    /// acceleration, and this beat's velocity.
+    pub fn beat(&mut self, lh: i32, st: &St) {
+        self.fresh = false;
+        self.vx = 0;
+        self.vy = 0;
+        if lh == 3 {
+            return;
         }
-    }
-
-    /// `a()`: per-frame update
-    pub fn update(&mut self, lh: i32, st: &St) {
         match &mut self.kind {
             Kind::A => {}
             Kind::B { j } | Kind::Q { bj: j, .. } => {
-                if lh != 3 {
-                    let side = *j;
-                    let ns = self.missile_step(side, st.B_c);
-                    if let Kind::B { j } | Kind::Q { bj: j, .. } = &mut self.kind {
-                        *j = ns;
-                    }
+                let side = *j;
+                let ns = self.missile_beat(side, st.B_c);
+                if let Kind::B { j } | Kind::Q { bj: j, .. } = &mut self.kind {
+                    *j = ns;
                 }
             }
-            Kind::Fm { .. } => {
-                if lh != 3 {
-                    let (fi, fj) = match &self.kind {
-                        Kind::Fm { i, fj, .. } => (*i, *fj),
-                        _ => unreachable!(),
-                    };
-                    if !fi {
-                        // f.c is a never-assigned static => 0
-                        let ns = self.missile_step(fj, 0);
-                        if let Kind::Fm { fj, .. } = &mut self.kind {
-                            *fj = ns;
+            Kind::Fm { i, fj, .. } => {
+                if !*i {
+                    let side = *fj;
+                    // f.c is a never-assigned static => 0
+                    let ns = self.missile_beat(side, 0);
+                    if let Kind::Fm { fj, .. } = &mut self.kind {
+                        *fj = ns;
+                    }
+                } else {
+                    let mut done = false;
+                    if let Kind::Fm { k, i, .. } = &mut self.kind {
+                        for b in k.iter_mut() {
+                            b.beat(lh, st);
                         }
-                    } else {
-                        let mut done = false;
-                        if let Kind::Fm { k, i, .. } = &mut self.kind {
-                            for b in k.iter_mut() {
-                                b.update(lh, st);
-                            }
-                            if !k[0].d && !k[1].d {
-                                *i = false;
-                                done = true;
-                            }
+                        if !k[0].d && !k[1].d {
+                            *i = false;
+                            done = true;
                         }
-                        if done {
-                            self.d = false;
-                        }
+                    }
+                    if done {
+                        self.d = false;
                     }
                 }
             }
             Kind::G | Kind::Y => {
-                if lh != 3 {
-                    if self.e < 0 {
-                        self.d = false;
-                    } else {
-                        self.e -= self.b;
-                    }
+                if self.e < 0 {
+                    self.d = false;
+                } else {
+                    self.vy = -self.b;
                 }
             }
             Kind::O | Kind::D => {
-                if lh != 3 {
-                    if self.e < 0 {
-                        self.d = false;
-                    } else {
-                        self.f += 1;
-                        self.e -= self.b;
-                    }
+                if self.e < 0 {
+                    self.d = false;
+                } else {
+                    self.f += 1;
+                    self.vy = -self.b;
                 }
             }
             Kind::Burn { .. } => {
-                if lh != 3 {
-                    if self.f < 3 {
-                        self.f += 1;
+                if self.f < 3 {
+                    self.f += 1;
+                } else {
+                    self.f = 0;
+                    self.d = false;
+                }
+            }
+            Kind::Prot(p) => p.advance(),
+            Kind::ProtN { p, j, l, k } => {
+                if *l {
+                    let (g, e) = (self.g, self.e);
+                    let mut idle = 0;
+                    for y in j.iter_mut() {
+                        if y.d {
+                            y.beat(lh, st);
+                        } else {
+                            idle += 1;
+                        }
+                    }
+                    if idle == 3 && *k > 10 {
+                        *l = false;
+                    }
+                    if *k == 5 {
+                        j[1].fire(g, e - 29, 0);
+                    } else if *k == 10 {
+                        j[2].fire(g, e - 29, 0);
+                    }
+                    *k += 1;
+                }
+                p.advance();
+            }
+            Kind::ProtO { p, l, k, .. } => {
+                if *l {
+                    if *k < 40 {
+                        *k += 1;
                     } else {
-                        self.f = 0;
-                        self.d = false;
+                        *k = 0;
+                        *l = false;
                     }
                 }
-            }
-            Kind::Prot(_) => {
-                if lh != 3 {
-                    self.prot_step();
-                }
-            }
-            Kind::ProtN { .. } => {
-                if lh != 3 {
-                    let l = matches!(self.kind, Kind::ProtN { l: true, .. });
-                    if !l {
-                        let (i, c) = self.prot().map(|p| (p.i, p.c)).unwrap();
-                        let idx = ((i + c * 2) % 12) as usize;
-                        self.g += PATH[idx][0];
-                        self.e += PATH[idx][1];
-                    } else {
-                        let (g, e) = (self.g, self.e);
-                        if let Kind::ProtN { j, l, k, .. } = &mut self.kind {
-                            let mut idle = 0;
-                            for y in j.iter_mut() {
-                                if y.d {
-                                    y.update(lh, st);
-                                } else {
-                                    idle += 1;
-                                }
-                            }
-                            if idle == 3 && *k > 10 {
-                                *l = false;
-                            }
-                            if *k == 5 {
-                                j[1].fire(g, e - 29, 0);
-                            } else if *k == 10 {
-                                j[2].fire(g, e - 29, 0);
-                            }
-                            *k += 1;
-                        }
-                    }
-                }
-                if lh != 3 {
-                    if let Some(p) = self.prot_mut() {
-                        if p.i < 11 {
-                            p.i += 1;
-                        } else {
-                            p.i = 0;
-                        }
-                    }
-                }
-            }
-            Kind::ProtO { .. } => {
-                if lh != 3 {
-                    let l = matches!(self.kind, Kind::ProtO { l: true, .. });
-                    if !l {
-                        self.prot_step();
-                    } else if let Kind::ProtO { p, l, k, .. } = &mut self.kind {
-                        if *k < 40 {
-                            *k += 1;
-                        } else {
-                            *k = 0;
-                            *l = false;
-                        }
-                        if p.i < 11 {
-                            p.i += 1;
-                        } else {
-                            p.i = 0;
-                        }
-                    }
-                }
+                p.advance();
             }
             Kind::Egg { i, c, .. } => {
-                if lh != 3 {
-                    if self.e <= 128 && self.e >= 0 {
-                        self.e += *c * self.b;
-                        self.g += *i;
-                    } else {
-                        self.d = false;
-                    }
+                if self.e <= 128 && self.e >= 0 {
+                    self.vy = *c * self.b;
+                    self.vx = *i;
+                } else {
+                    self.d = false;
                 }
             }
-            Kind::Web { c, .. } => {
-                if lh != 3 {
-                    if self.f == 0 {
-                        self.e += self.b;
-                    } else if self.f < 20 {
-                        self.f += 1;
+            Kind::Web { c, i } => {
+                if *i {
+                    // caught-explosion countdown (was done while drawing)
+                    if *c > 0 {
+                        *c -= 1;
                     } else {
                         self.f = 0;
                         *c = 0;
-                        self.d = false;
+                        *i = false;
                     }
+                } else if *c == 0 {
+                    *c = -1;
+                } else if *c == -1 {
+                    *c = 1;
+                }
+                if self.f == 0 {
+                    self.vy = self.b;
+                } else if self.f < 20 {
+                    self.f += 1;
+                } else {
+                    self.f = 0;
+                    if let Kind::Web { c, .. } = &mut self.kind {
+                        *c = 0;
+                    }
+                    self.d = false;
                 }
                 if self.e > 128 {
                     self.d = false;
@@ -363,9 +341,49 @@ impl Ent {
         }
     }
 
-    /// `a(Graphics)`
-    pub fn draw(&mut self, g: &mut Graphics, img: &Images) -> Res {
-        match &mut self.kind {
+    /// Sub-step `k` of `n` within the current beat: move by that slice of
+    /// the beat's velocity. Fresh launches get their first beat here.
+    pub fn sub(&mut self, k: i32, n: i32, lh: i32, st: &St) {
+        if self.fresh {
+            self.beat(lh, st);
+        }
+        if lh == 3 {
+            return;
+        }
+        self.g += part(self.vx, k, n);
+        self.e += part(self.vy, k, n);
+        if let Kind::ProtN { j, .. } = &mut self.kind {
+            for y in j.iter_mut() {
+                if y.d || y.fresh {
+                    y.sub(k, n, lh, st);
+                }
+            }
+        }
+    }
+
+    /// Whole original frame at once (code still running at 150 ms beats).
+    pub fn update(&mut self, lh: i32, st: &St) {
+        self.beat(lh, st);
+        if lh != 3 {
+            self.g += self.vx;
+            self.e += self.vy;
+        }
+        if let Kind::ProtN { j, .. } = &mut self.kind {
+            for y in j.iter_mut() {
+                y.g += y.vx;
+                y.e += y.vy;
+            }
+        }
+    }
+
+    /// `ProtO.j`: left end of the shield bar (computed when drawing originally)
+    pub fn shield_x(&self) -> i32 {
+        self.g + 7 - 15
+    }
+
+    /// `a(Graphics)` without side effects
+    pub fn draw(&self, g: &mut Graphics, img: &Images) -> Res {
+        match &self.kind {
             Kind::A => {}
             Kind::B { .. } | Kind::Q { .. } => {
                 g.set_clip(self.g, self.e, 4, 9);
@@ -378,7 +396,7 @@ impl Ent {
                     g.draw_image(&img.B_l, self.g - self.f % 2 * 4, self.e, TL)?;
                     g.reset_clip();
                 } else {
-                    for b in k.iter_mut() {
+                    for b in k.iter() {
                         if b.d {
                             b.draw(g, img)?;
                         }
@@ -400,7 +418,7 @@ impl Ent {
             Kind::Prot(_) => g.draw_image(&img.a_n, self.g, self.e, TL)?,
             Kind::ProtN { j, l, .. } => {
                 if *l {
-                    for y in j.iter_mut() {
+                    for y in j.iter() {
                         if y.d {
                             y.draw(g, img)?;
                         }
@@ -414,10 +432,9 @@ impl Ent {
                     g.draw_image(&img.a_n, self.g, self.e, TL)?;
                 }
             }
-            Kind::ProtO { l, j, .. } => {
+            Kind::ProtO { l, .. } => {
                 if *l {
-                    *j = self.g + 7 - 15;
-                    let j = *j;
+                    let j = self.shield_x();
                     g.set_color(214, 159, 0);
                     g.fill_rect(j, self.e + 1, 34, 3);
                     g.set_color(255, 255, 0);
@@ -440,10 +457,9 @@ impl Ent {
             Kind::Web { c, i } => {
                 if !*i {
                     if self.f == 0 {
-                        if *c == 0 {
+                        if *c <= 0 {
                             g.set_clip(self.g + 12, self.e, 23, 47);
                             g.draw_image(&img.t_j[1], self.g + 12, self.e, TL)?;
-                            *c += 1;
                         } else {
                             g.set_clip(self.g, self.e, 41, 41);
                             g.draw_image(&img.t_j[0], self.g, self.e, TL)?;
@@ -455,13 +471,6 @@ impl Ent {
                     g.reset_clip();
                 } else {
                     g.draw_image(&img.t_j[2], self.g, self.e, TL)?;
-                    if *c > 0 {
-                        *c -= 1;
-                    } else {
-                        self.f = 0;
-                        *c = 0;
-                        *i = false;
-                    }
                 }
             }
         }
@@ -531,6 +540,7 @@ impl Ent {
 
     /// `a(int, int, int)`: launch
     pub fn fire(&mut self, v1: i32, v2: i32, v3: i32) {
+        let moves = !matches!(self.kind, Kind::A | Kind::Prot(_) | Kind::ProtO { .. });
         match &mut self.kind {
             Kind::A | Kind::Prot(_) => {}
             Kind::B { j } | Kind::Q { bj: j, .. } => {
@@ -589,6 +599,9 @@ impl Ent {
                 self.d = true;
             }
         }
+        self.vx = 0;
+        self.vy = 0;
+        self.fresh = moves && !matches!(self.kind, Kind::ProtN { .. });
     }
 
     /// `a(int)`
@@ -598,12 +611,17 @@ impl Ent {
         }
     }
 
-    /// `a.a(int, int)` (and the N/O overrides): follow the pilot
-    pub fn follow(&mut self, x: i32, y: i32) {
+    /// `a.a(int, int)` (and the N/O overrides): follow the pilot. At 60 fps
+    /// the orbit offset is blended between this beat's and the next one's.
+    pub fn follow(&mut self, x: i32, y: i32, k: i32, n: i32) {
         let locked = matches!(self.kind, Kind::ProtN { l: true, .. } | Kind::ProtO { l: true, .. });
         if !locked {
-            self.g = x;
-            self.e = y;
+            let (o0, o1) = match self.prot() {
+                Some(p) => (p.o0, p.o1),
+                None => ([0; 2], [0; 2]),
+            };
+            self.g = x + o0[0] + (o1[0] - o0[0]) * k / n.max(1);
+            self.e = y + o0[1] + (o1[1] - o0[1]) * k / n.max(1);
             self.d = true;
         }
     }

@@ -251,6 +251,7 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
         }
     };
     let mut buf = Vec::new();
+    let mut t_ms = 0.0f64;
     let mut advance = |game: &mut Game, g: &mut Graphics, ms: f64| {
         let mut t = 0.0;
         while t < ms {
@@ -264,7 +265,11 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
         let Some(cmd) = p.next() else { continue };
         let arg = p.next().unwrap_or("");
         match cmd {
-            "wait" => advance(game, g, arg.parse().unwrap_or(0.0)),
+            "wait" => {
+                let ms: f64 = arg.parse().unwrap_or(0.0);
+                t_ms += ms;
+                advance(game, g, ms)
+            }
             "press" => input.press(SRC_KEY | (code_of(arg) as u32 as u64), code_of(arg), game, font),
             "release" => input.release(SRC_KEY | (code_of(arg) as u32 as u64), game, font),
             "tap" => {
@@ -279,6 +284,16 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
                 save_png(&out.join(arg), &g.fb, 3);
                 println!("shot {arg}");
             }
+            "stat" => println!(
+                "stat {} t={} H={} score={} life={} spiders={} level={}",
+                arg,
+                t_ms,
+                game.st.L_H,
+                game.st.j_d,
+                game.lc.s.m,
+                game.bat.h.e.iter().filter(|z| z.is_some()).count(),
+                game.st.j_b
+            ),
             "pos" => println!("pos {} x={} y={} dir={} speed={}", arg, game.lc.s.l, game.lc.s.k, game.lc.s.f, game.lc.s.e),
             "quit" => break,
             _ => {}

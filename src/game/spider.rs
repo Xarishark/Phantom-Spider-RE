@@ -1,6 +1,6 @@
 //! `r` (base actor), `z` (enemy tarantula) and `l` (the pilot's ship).
 
-use super::{load, rnd, Images};
+use super::{load, part, rnd, Images};
 use crate::gfx::{Graphics, Res, Sprite, NPE};
 
 /// `r()` constructor: loads the static `r.g` and builds the sprite.
@@ -29,11 +29,17 @@ pub struct Z {
     pub o: i32,
     pub i: i32,
     pub c: i32,
+    /// 60 fps: retreat velocity for this beat, leg wobble sampled per beat,
+    /// sub-steps left to show the health bar after a hit
+    pub rvx: i32,
+    pub rvy: i32,
+    pub jit: [i32; 6],
+    pub bar: i32,
 }
 
 impl Z {
     pub fn new(img: &mut Images) -> Z {
-        Z { m: 0, e: 0, h: 0, a: 0, l: 0, k: 0, n: r_ctor(img), f: 0, p: 2, b: 0, o: 0, i: -1, c: 0 }
+        Z { m: 0, e: 0, h: 0, a: 0, l: 0, k: 0, n: r_ctor(img), f: 0, p: 2, b: 0, o: 0, i: -1, c: 0, rvx: 0, rvy: 0, jit: [0; 6], bar: 0 }
     }
 
     /// `r.a(int,int,int,int)`
@@ -54,32 +60,44 @@ impl Z {
         img.z_j[0] = load("/spider/spiderlegc.png");
     }
 
-    /// `b()`: move
-    pub fn step(&mut self, lh: i32) {
-        if lh != 3 {
-            match self.f {
-                1 => {
-                    if self.l + self.e + self.b < 128 {
-                        self.l += self.e;
-                    }
+    /// `b()` (move by `e` per original frame) spread over sub-step `k` of `n`,
+    /// plus this beat's retreat dash and the health-bar timer.
+    pub fn sub(&mut self, k: i32, n: i32) {
+        let d = part(self.e, k, n);
+        match self.f {
+            1 => {
+                if self.l + self.e + self.b < 128 {
+                    self.l += d;
                 }
-                2 => {
-                    if self.l - self.e > 0 {
-                        self.l -= self.e;
-                    }
-                }
-                3 => {
-                    if self.k > 0 {
-                        self.k -= self.e;
-                    }
-                }
-                4 => {
-                    if self.k + self.e + self.o < 128 {
-                        self.k += self.e;
-                    }
-                }
-                _ => {}
             }
+            2 => {
+                if self.l - self.e > 0 {
+                    self.l -= d;
+                }
+            }
+            3 => {
+                if self.k > 0 {
+                    self.k -= d;
+                }
+            }
+            4 => {
+                if self.k + self.e + self.o < 128 {
+                    self.k += d;
+                }
+            }
+            _ => {}
+        }
+        self.l += part(self.rvx, k, n);
+        self.k += part(self.rvy, k, n);
+        if self.bar > 0 {
+            self.bar -= 1;
+        }
+    }
+
+    /// Per-beat leg wobble (the original rolled it on every draw).
+    pub fn roll_jitter(&mut self) {
+        for j in self.jit.iter_mut() {
+            *j = rnd(5);
         }
     }
 
@@ -97,6 +115,8 @@ impl Z {
     /// `a(int,int)`: AI; returns weapon to fire (0 none, 1/3 egg, 2 web)
     pub fn think(&mut self, v1: i32, v2: i32, lh: i32, ig: i32) -> i32 {
         let mut v3 = 0;
+        self.rvx = 0;
+        self.rvy = 0;
         if lh != 3 {
             if self.i == -1 {
                 match rnd(10) {
@@ -124,33 +144,18 @@ impl Z {
                     _ => {}
                 }
             } else if self.i == -2 {
-                let aim = |k: i32| if ig > 90 { if v2 > k { 1 } else { 3 } } else { rnd(2) };
-                if self.c == 0 {
-                    self.f = 3;
-                    self.k -= self.e;
-                    v3 = aim(self.k);
-                    if self.k + self.o <= 0 {
-                        self.i = -3;
-                        v3 = 0;
-                    }
-                } else if self.c == 1 {
-                    self.f = 2;
-                    self.l -= self.e;
-                    v3 = aim(self.k);
-                    if self.l + self.b <= 0 {
-                        self.i = -3;
-                        v3 = 0;
-                    }
-                } else if self.c == 2 {
-                    self.f = 1;
-                    self.l += self.e;
-                    v3 = aim(self.k);
-                    if self.l >= 128 {
-                        self.i = -3;
-                        v3 = 0;
-                    }
-                }
-                if self.i == -3 {
+                // Retreat: the original moved here *and* in b(); the dash is
+                // now a per-beat velocity applied by sub(). The exit check
+                // runs on the next beat, after that movement has happened.
+                let exited = match self.c {
+                    0 => self.k + self.o <= 0,
+                    1 => self.l + self.b <= 0,
+                    2 => self.l >= 128,
+                    _ => false,
+                };
+                if exited {
+                    self.i = -3;
+                    v3 = 0;
                     self.c = rnd(3);
                     match self.c {
                         0 => {
@@ -167,6 +172,31 @@ impl Z {
                         }
                         _ => {}
                     }
+                } else {
+                    match self.c {
+                        0 => {
+                            self.f = 3;
+                            self.rvy = -self.e;
+                        }
+                        1 => {
+                            self.f = 2;
+                            self.rvx = -self.e;
+                        }
+                        2 => {
+                            self.f = 1;
+                            self.rvx = self.e;
+                        }
+                        _ => {}
+                    }
+                    v3 = if ig > 90 {
+                        if v2 > self.k {
+                            1
+                        } else {
+                            3
+                        }
+                    } else {
+                        rnd(2)
+                    };
                 }
             } else if self.i == -3 {
                 match self.c {
@@ -297,8 +327,14 @@ impl Z {
     /// `a(Graphics)`: main in-game draw
     pub fn draw(&mut self, g: &mut Graphics, img: &Images, lh: i32) -> Res {
         let (l, k) = (self.l, self.k);
-        // jitter: random wobble while the game runs, none while paused
-        let j = |_: ()| if lh != 3 { rnd(5) } else { 0 };
+        // leg wobble: sampled once per beat (roll_jitter), none while paused
+        let jit = self.jit;
+        let mut ji = 0usize;
+        let mut j = |_: ()| {
+            let v = if lh != 3 { jit[ji % 6] } else { 0 };
+            ji += 1;
+            v
+        };
         match self.p {
             0 => {
                 if self.c == 0 {
@@ -401,6 +437,8 @@ pub struct Plane {
     pub n: Option<Sprite>,
     pub f: i32,
     pub c: bool,
+    /// caught in a web: no movement for this beat
+    pub frozen: bool,
 }
 
 impl Plane {
@@ -413,7 +451,7 @@ impl Plane {
                 s.define_reference_pixel(w / 2, h / 2);
             }
         }
-        Plane { m: 0, e: 10, h: 0, a: 0, l: 0, k: 0, b: 22, o: 20, n, f: 0, c: false }
+        Plane { m: 0, e: 10, h: 0, a: 0, l: 0, k: 0, b: 22, o: 20, n, f: 0, c: false, frozen: false }
     }
 
     pub fn set_stats(&mut self, m: i32, e: i32, h: i32, a: i32) {
@@ -449,37 +487,49 @@ impl Plane {
         n.paint(g)
     }
 
-    /// `a()`: move; `l_d` is the static fire cooldown
-    pub fn step(&mut self, l_d: &mut i32) {
+    /// Discrete part of `a()`: a web catch (`c`) freezes the pilot for this
+    /// beat and pauses the fire cooldown `l_d`.
+    pub fn beat(&mut self, l_d: &mut i32) {
         if self.c {
             self.c = false;
+            self.frozen = true;
         } else {
-            match self.f {
-                1 => {
-                    if self.l + self.e + 15 < 128 {
-                        self.l += self.e;
-                    }
-                }
-                2 => {
-                    if self.l - self.e > 0 {
-                        self.l -= self.e;
-                    }
-                }
-                3 => {
-                    if self.k - self.e > 0 {
-                        self.k -= self.e;
-                    }
-                }
-                4 => {
-                    if self.k + self.e + 15 < 128 {
-                        self.k += self.e;
-                    }
-                }
-                _ => {}
-            }
+            self.frozen = false;
             if *l_d > 0 {
                 *l_d -= 1;
             }
+        }
+    }
+
+    /// Movement part of `a()` for sub-step `k` of `n`. Reads the current
+    /// direction every sub-step, so input takes effect immediately.
+    pub fn sub(&mut self, k: i32, n: i32) {
+        if self.frozen {
+            return;
+        }
+        let d = part(self.e, k, n);
+        match self.f {
+            1 => {
+                if self.l + self.e + 15 < 128 {
+                    self.l += d;
+                }
+            }
+            2 => {
+                if self.l - self.e > 0 {
+                    self.l -= d;
+                }
+            }
+            3 => {
+                if self.k - self.e > 0 {
+                    self.k -= d;
+                }
+            }
+            4 => {
+                if self.k + self.e + 15 < 128 {
+                    self.k += d;
+                }
+            }
+            _ => {}
         }
     }
 }

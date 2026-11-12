@@ -119,6 +119,7 @@ impl Game {
             g.draw_image(&self.img.k_a, 0, 117, TL)?;
             self.tut.k.draw(g, &self.img)?;
             self.tut.f.draw(g, &self.img)?;
+            self.tut.j.tick(&self.st);
             self.tut.j.draw(g, &self.img, &self.st)?;
             let lh = self.st.L_H;
             self.tut.k.update(lh, &self.st);
