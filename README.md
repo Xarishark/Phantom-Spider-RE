@@ -16,8 +16,11 @@ rumble and audio. No Java runtime is involved.
 Options: `--scale N` (window size, default 5), `--fullscreen`,
 `--soundfont file.sf2`, `--mute`, `--no-rumble`, `--lang tl-PH`.
 
-Saves go to `%APPDATA%\PhantomSpider\Phoenix7.rms`
-(`~/.local/share/PhantomSpider` on Linux; override with `PHANTOM_SPIDER_DATA`).
+Saves go to a `save` folder next to the exe (`save\Phoenix7.rms`), so the
+whole folder is portable. Saves from older builds in `%APPDATA%\PhantomSpider`
+are copied over on first launch. If the exe's folder isn't writable the game
+falls back to `%APPDATA%\PhantomSpider` (`~/.local/share/PhantomSpider` on
+Linux); `PHANTOM_SPIDER_DATA` overrides the location.
 
 ## Controls
 

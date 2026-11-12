@@ -1,13 +1,12 @@
-//! `javax.microedition.rms.RecordStore` backed by files in the user's data
-//! directory, wrapped the same way as the game's `w` helper class.
+//! `javax.microedition.rms.RecordStore` backed by files in a `save` folder
+//! next to the executable, wrapped the same way as the game's `w` helper class.
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
-pub fn data_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("PHANTOM_SPIDER_DATA") {
-        return PathBuf::from(d);
-    }
+/// The per-user folder older builds saved to; still used as a fallback.
+fn legacy_dir() -> PathBuf {
     let base = if cfg!(windows) {
         std::env::var_os("APPDATA").map(PathBuf::from)
     } else {
@@ -16,6 +15,46 @@ pub fn data_dir() -> PathBuf {
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
     };
     base.unwrap_or_else(|| PathBuf::from(".")).join("PhantomSpider")
+}
+
+/// `save/` next to the exe. Override with `PHANTOM_SPIDER_DATA`; if the exe's
+/// folder isn't writable, falls back to the per-user folder. Saves from the
+/// per-user folder are copied over once so existing progress carries along.
+pub fn data_dir() -> PathBuf {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        if let Some(d) = std::env::var_os("PHANTOM_SPIDER_DATA") {
+            return PathBuf::from(d);
+        }
+        let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else {
+            return legacy_dir();
+        };
+        let dir = exe_dir.join("save");
+        let probe = dir.join(".write-test");
+        let writable = fs::create_dir_all(&dir).is_ok() && fs::write(&probe, b"").is_ok();
+        let _ = fs::remove_file(&probe);
+        if !writable {
+            return legacy_dir();
+        }
+        // one-time migration from the per-user folder
+        let has_saves = fs::read_dir(&dir)
+            .map(|rd| rd.flatten().any(|e| e.path().extension().is_some_and(|x| x == "rms")))
+            .unwrap_or(false);
+        if !has_saves {
+            if let Ok(rd) = fs::read_dir(legacy_dir()) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.extension().is_some_and(|x| x == "rms") {
+                        if let Some(name) = p.file_name() {
+                            let _ = fs::copy(&p, dir.join(name));
+                        }
+                    }
+                }
+            }
+        }
+        dir
+    })
+    .clone()
 }
 
 fn path(name: &str) -> PathBuf {
