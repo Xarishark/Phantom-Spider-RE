@@ -88,7 +88,9 @@ impl Game {
         s.j_e = take(&mut v40)?;
         s.j_o = take(&mut v40)?;
         s.j_m = take(&mut v40)?;
-        s.j_d = if self.ps.z { peek(&v40)? } else { 0 };
+        // The original only restored the score when a mission was in progress
+        // (`j.d = 0` otherwise); the port always keeps it.
+        s.j_d = peek(&v40)?;
         adv(&mut v40);
         s.j_g = take(&mut v40)?;
         s.j_k = peek(&v40)? != 0;
@@ -313,8 +315,12 @@ impl Game {
         self.ps_d(b);
     }
 
-    fn ps_new_game_flow(&mut self) {
-        self.st.j_d = 0;
+    /// Go to the mission menu. The original also zeroed the score here when
+    /// continuing; the port only does that for a real new game.
+    fn ps_new_game_flow(&mut self, reset_score: bool) {
+        if reset_score {
+            self.st.j_d = 0;
+        }
         self.st.K_b = 8;
         self.ps_e();
         self.ps.z = false;
@@ -405,7 +411,7 @@ impl Game {
                                 } else if self.ps.z && self.L_unloaded() {
                                     self.ps_i();
                                 } else {
-                                    self.ps_new_game_flow();
+                                    self.ps_new_game_flow(false);
                                 }
                                 self.st.k_q = 0;
                             }
@@ -431,7 +437,7 @@ impl Game {
                     self.ps_b(1);
                 } else if c == Cmd::H {
                     self.ps_reset()?;
-                    self.ps_new_game_flow();
+                    self.ps_new_game_flow(true);
                 }
             }
             Tag::QList => {

@@ -5,56 +5,34 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// The per-user folder older builds saved to; still used as a fallback.
-fn legacy_dir() -> PathBuf {
-    let base = if cfg!(windows) {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    } else {
-        std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+static DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Pick and check the save folder: `save/` next to the exe, or
+/// `PHANTOM_SPIDER_DATA` if set. Must be called once at startup; returns an
+/// error message if the folder can't be created or written.
+pub fn init_data_dir() -> Result<PathBuf, String> {
+    let dir = match std::env::var_os("PHANTOM_SPIDER_DATA") {
+        Some(d) => PathBuf::from(d),
+        None => std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("save")))
+            .ok_or_else(|| "Can't find the game's folder.".to_string())?,
     };
-    base.unwrap_or_else(|| PathBuf::from(".")).join("PhantomSpider")
+    let probe = dir.join(".write-test");
+    let ok = fs::create_dir_all(&dir).and_then(|_| fs::write(&probe, b""));
+    let _ = fs::remove_file(&probe);
+    if let Err(e) = ok {
+        return Err(format!(
+            "Can't write saves to:\n{}\n\n{e}\n\nMove the game to a folder you can write to (not Program Files).",
+            dir.display()
+        ));
+    }
+    let _ = DIR.set(dir.clone());
+    Ok(dir)
 }
 
-/// `save/` next to the exe. Override with `PHANTOM_SPIDER_DATA`; if the exe's
-/// folder isn't writable, falls back to the per-user folder. Saves from the
-/// per-user folder are copied over once so existing progress carries along.
 pub fn data_dir() -> PathBuf {
-    static DIR: OnceLock<PathBuf> = OnceLock::new();
-    DIR.get_or_init(|| {
-        if let Some(d) = std::env::var_os("PHANTOM_SPIDER_DATA") {
-            return PathBuf::from(d);
-        }
-        let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else {
-            return legacy_dir();
-        };
-        let dir = exe_dir.join("save");
-        let probe = dir.join(".write-test");
-        let writable = fs::create_dir_all(&dir).is_ok() && fs::write(&probe, b"").is_ok();
-        let _ = fs::remove_file(&probe);
-        if !writable {
-            return legacy_dir();
-        }
-        // one-time migration from the per-user folder
-        let has_saves = fs::read_dir(&dir)
-            .map(|rd| rd.flatten().any(|e| e.path().extension().is_some_and(|x| x == "rms")))
-            .unwrap_or(false);
-        if !has_saves {
-            if let Ok(rd) = fs::read_dir(legacy_dir()) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    if p.extension().is_some_and(|x| x == "rms") {
-                        if let Some(name) = p.file_name() {
-                            let _ = fs::copy(&p, dir.join(name));
-                        }
-                    }
-                }
-            }
-        }
-        dir
-    })
-    .clone()
+    DIR.get().cloned().expect("init_data_dir not called")
 }
 
 fn path(name: &str) -> PathBuf {

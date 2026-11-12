@@ -17,10 +17,9 @@ Options: `--scale N` (window size, default 5), `--fullscreen`,
 `--soundfont file.sf2`, `--mute`, `--no-rumble`, `--lang tl-PH`.
 
 Saves go to a `save` folder next to the exe (`save\Phoenix7.rms`), so the
-whole folder is portable. Saves from older builds in `%APPDATA%\PhantomSpider`
-are copied over on first launch. If the exe's folder isn't writable the game
-falls back to `%APPDATA%\PhantomSpider` (`~/.local/share/PhantomSpider` on
-Linux); `PHANTOM_SPIDER_DATA` overrides the location.
+whole folder is portable. If that folder can't be created or written (e.g. the
+game sits in Program Files), the game shows an error and exits.
+`PHANTOM_SPIDER_DATA` overrides the location (used by the test scripts).
 
 ## Controls
 
@@ -61,6 +60,8 @@ screens still update at the original rate since nothing moves there.
   a notice. Everything else (missions, eye collecting/combining/equipping,
   pilot & spider stats, high scores, instructions, saving/continuing,
   the original cheat codes) behaves as on the phone.
+- Your score is kept between sessions; the original reset it on every launch
+  unless a mission was in progress. Only "New game" resets it.
 - Backlight control (`DeviceControl.setLights`) is ignored; taking damage
   rumbles the gamepad instead.
 

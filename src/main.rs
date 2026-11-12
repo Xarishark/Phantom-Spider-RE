@@ -307,6 +307,18 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
 // ----------------------------------------------------------------- main
 fn main() {
     let o = parse_args();
+    if let Err(msg) = rms::init_data_dir() {
+        eprintln!("Phantom Spider: {msg}");
+        if !o.headless && o.script.is_none() {
+            let _ = sdl3::messagebox::show_simple_message_box(
+                sdl3::messagebox::MessageBoxFlag::ERROR,
+                "Phantom Spider",
+                &msg,
+                None,
+            );
+        }
+        std::process::exit(1);
+    }
     lang::init(&o.lang);
     let font = Rc::new(font::Font::new());
     let mut g = Graphics::new(font.clone());
