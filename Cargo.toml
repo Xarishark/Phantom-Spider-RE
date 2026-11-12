@@ -3,6 +3,12 @@ name = "phantom-spider"
 version = "0.1.0"
 edition = "2021"
 description = "Native PC port of the Nokia S40 J2ME game Phantom Spider"
+license = "MIT"
+repository = "https://github.com/Xarishark/phantom-spider"
+readme = "README.md"
+keywords = ["game", "port", "j2me", "sdl3", "nokia"]
+categories = ["games"]
+publish = false
 
 [dependencies]
 png = "0.18"

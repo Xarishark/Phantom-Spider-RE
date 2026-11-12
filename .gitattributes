@@ -1,0 +1,10 @@
+# Normalize text to LF in the repository
+* text=auto eol=lf
+
+# Original game data and other binaries
+*.png binary
+*.mid binary
+*.jar binary
+*.sf2 binary
+*.bundle binary
+assets/lang.* binary
