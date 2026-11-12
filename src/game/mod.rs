@@ -680,3 +680,10 @@ impl Game {
         }
     }
 }
+
+impl Game {
+    /// The shooting canvas is showing.
+    pub fn in_shooter(&self) -> bool {
+        matches!(self.cur, Cur::L)
+    }
+}

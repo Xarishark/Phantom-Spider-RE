@@ -144,7 +144,7 @@ impl Input {
             self.repeat_at.insert(code, 380.0);
         }
     }
-    fn release(&mut self, src: u64, game: &mut Game) {
+    fn release(&mut self, src: u64, game: &mut Game, font: &font::Font) {
         let Some(code) = self.sources.remove(&src) else { return };
         if let Some(n) = self.held.get_mut(&code) {
             *n = n.saturating_sub(1);
@@ -152,13 +152,22 @@ impl Input {
                 self.held.remove(&code);
                 self.repeat_at.remove(&code);
                 game.key_released(code);
+                // The phone could only hold one direction; on a keyboard or stick the
+                // player often rolls between directions. In the shooter, releasing one
+                // direction while another is still held keeps moving the other way
+                // instead of stopping (the original keyReleased zeroes movement).
+                if game.in_shooter() && matches!(code, K_UP | K_DOWN | K_LEFT | K_RIGHT) {
+                    if let Some(&other) = [K_UP, K_DOWN, K_LEFT, K_RIGHT].iter().find(|c| self.held.contains_key(c)) {
+                        game.key_pressed(other, false, font);
+                    }
+                }
             }
         }
     }
-    fn release_all(&mut self, game: &mut Game) {
+    fn release_all(&mut self, game: &mut Game, font: &font::Font) {
         let srcs: Vec<u64> = self.sources.keys().copied().collect();
         for s in srcs {
-            self.release(s, game);
+            self.release(s, game, font);
         }
     }
     /// Auto-repeat directions on menus/forms (canvases ignore repeats).
@@ -224,6 +233,7 @@ fn map_button(b: sdl3::gamepad::Button) -> Option<i32> {
 /// `tap code`, `shot file.png`, `quit`. Codes are MIDP key codes or names
 /// (up, down, left, right, fire, softl, softr, clear).
 fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font: &font::Font) {
+    let mut input = Input::new();
     let text = std::fs::read_to_string(script).unwrap_or_default();
     let _ = std::fs::create_dir_all(out);
     let step = 1000.0 / 60.0;
@@ -255,8 +265,8 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
         let arg = p.next().unwrap_or("");
         match cmd {
             "wait" => advance(game, g, arg.parse().unwrap_or(0.0)),
-            "press" => game.key_pressed(code_of(arg), false, font),
-            "release" => game.key_released(code_of(arg)),
+            "press" => input.press(SRC_KEY | (code_of(arg) as u32 as u64), code_of(arg), game, font),
+            "release" => input.release(SRC_KEY | (code_of(arg) as u32 as u64), game, font),
             "tap" => {
                 let c = code_of(arg);
                 game.key_pressed(c, false, font);
@@ -269,6 +279,7 @@ fn run_script(game: &mut Game, g: &mut Graphics, script: &Path, out: &Path, font
                 save_png(&out.join(arg), &g.fb, 3);
                 println!("shot {arg}");
             }
+            "pos" => println!("pos {} x={} y={} dir={} speed={}", arg, game.lc.s.l, game.lc.s.k, game.lc.s.f, game.lc.s.e),
             "quit" => break,
             _ => {}
         }
@@ -371,7 +382,7 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
                     game.ps_destroy();
                     game.quit = true;
                 }
-                Event::Window { win_event: WindowEvent::FocusLost, .. } => input.release_all(game),
+                Event::Window { win_event: WindowEvent::FocusLost, .. } => input.release_all(game, font),
                 Event::KeyDown { keycode: Some(k), keymod, repeat, scancode, .. } => {
                     use sdl3::keyboard::{Keycode, Mod};
                     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
@@ -409,7 +420,7 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
                 Event::KeyUp { keycode: Some(k), scancode, .. } => {
                     if map_key(k).is_some() {
                         let src = SRC_KEY | scancode.map(|s| s as u64).unwrap_or(k as u64 & 0xffff_ffff);
-                        input.release(src, game);
+                        input.release(src, game, font);
                     }
                 }
                 Event::GamepadAdded { which, .. } => {
@@ -428,7 +439,7 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
                         .filter(|s| (s & 0xff_ffff_ffff) >> 8 == which as u64 && s >> 40 >= 2)
                         .collect();
                     for s in srcs {
-                        input.release(s, game);
+                        input.release(s, game, font);
                     }
                 }
                 Event::GamepadButtonDown { which, button, .. } => {
@@ -440,7 +451,7 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
                 Event::GamepadButtonUp { which, button, .. } => {
                     let which: u32 = which.into();
                     if map_button(button).is_some() {
-                        input.release(SRC_PAD | (which as u64) << 8 | button as u64, game);
+                        input.release(SRC_PAD | (which as u64) << 8 | button as u64, game, font);
                     }
                 }
                 Event::GamepadAxisMotion { which, axis, value, .. } => {
@@ -465,7 +476,7 @@ fn run(o: &Opts, game: &mut Game, g: &mut Graphics, font: &font::Font) -> Result
                     };
                     if now != prev {
                         let src = SRC_AXIS | (which as u64) << 8 | id as u64;
-                        input.release(src, game);
+                        input.release(src, game, font);
                         let code = if now > 0 { pos } else if now < 0 { neg } else { 0 };
                         if code != 0 {
                             input.press(src, code, game, font);
