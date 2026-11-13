@@ -43,7 +43,12 @@ jobs:
         # audio, controllers and so on from the player's system at run time
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build pkg-config \n            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \n            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev \n            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \n            libasound2-dev libpulse-dev libpipewire-0.3-dev \n            libdbus-1-dev libibus-1.0-dev libudev-dev
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libdbus-1-dev libibus-1.0-dev libudev-dev
           rustup update stable
           rustup default stable
       - name: Test
