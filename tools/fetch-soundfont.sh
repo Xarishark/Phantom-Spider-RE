@@ -11,9 +11,16 @@ base=https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/$commit
 mkdir -p "$dir"
 curl -sSfL --retry 3 -o "$dir/GeneralUser-GS.sf2" "$base/GeneralUser-GS.sf2"
 curl -sSfL --retry 3 -o "$dir/LICENSE.txt" "$base/documentation/LICENSE.txt"
-cd "$dir"
-if command -v sha256sum >/dev/null; then sum="sha256sum -c"; else sum="shasum -a 256 -c"; fi
-$sum <<'SUMS'
-9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe  GeneralUser-GS.sf2
-7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be  LICENSE.txt
-SUMS
+# compare the hashes directly: GNU, BSD (macOS) and Perl checksum tools all
+# print "<hash>  <file>", but their -c options differ
+check() {
+    local got
+    got=$( (sha256sum "$dir/$1" 2>/dev/null || shasum -a 256 "$dir/$1") | cut -d' ' -f1)
+    if [ "$got" != "$2" ]; then
+        echo "$1: checksum mismatch (got $got)" >&2
+        exit 1
+    fi
+    echo "$1: OK"
+}
+check GeneralUser-GS.sf2 9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe
+check LICENSE.txt 7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be
