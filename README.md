@@ -1,6 +1,6 @@
 # <img src="docs/images/phantom-spider-icon.png" alt="" width="30" height="30"> Phantom Spider RE
 
-A native Windows/Linux port of **Phantom Spider**, a 2004 Nokia Series 40
+A native Windows, Linux and macOS port of **Phantom Spider**, a 2004 Nokia Series 40
 J2ME shooter. You pilot the Phantom Spider against the Evil Tarantula's
 army, collect the eyes of the spiders you defeat, and combine them into
 stronger eyes that give your ship new weapons.
@@ -21,18 +21,22 @@ the Nokia Series 40 128x128 release (118,744 bytes, SHA-256
 `48a0b368429acae654520a4bcd40bbb17ff0f9833d665d9278a6d50d5fc5520d`). It isn't
 included here or in the releases.
 
-1. Download `PhantomSpiderRE-v…-Windows-x64.zip` from
-   [Releases](https://github.com/Xarishark/phantom-spider-re/releases) and
-   unzip it somewhere you can write to (not Program Files).
-2. Run `PhantomSpider.exe`. On the first start it asks for the JAR: drop it
-   on the window, or press Enter to pick it. (A JAR placed next to the
-   exe, or `--game <path>`, works too.)
+1. Download your system's build from
+   [Releases](https://github.com/Xarishark/phantom-spider-re/releases)
+   (`PhantomSpiderRE-v…-Windows-x64.zip`, `-Linux-x64.tar.gz` or
+   `-macOS-arm64.zip`) and unpack it somewhere you can write to (not
+   Program Files).
+2. Run `PhantomSpider.exe` (`phantom-spider` on Linux and macOS; the Mac
+   build isn't signed, so the first time right-click it and choose Open).
+   On the first start it asks for the JAR: drop it on the window, or press
+   Enter to pick it. (A JAR placed next to the program, or `--game <path>`,
+   works too.)
 3. The game checks the file and unpacks its art, music and text into
    `data/`. From then on it starts straight into the game.
 
 The release includes a General MIDI SoundFont
 ([GeneralUser GS](https://github.com/mrbumpy409/GeneralUser-GS)) for the
-music. Any `.sf2` next to the exe works; without one the game is silent.
+music. Any `.sf2` next to the program works; without one the game is silent.
 
 ### RecompLauncher
 
@@ -98,20 +102,26 @@ the original cheat codes) works as on the phone.
 
 ## Building
 
-A recent stable Rust toolchain and SDL3. Building doesn't need the game;
-running it does. On Linux, install the SDL3 development package and:
+A recent stable Rust toolchain and CMake. SDL3 is built from source and
+linked statically, so the program needs nothing else installed. Building
+doesn't need the game; running it does. On Linux, install the X11, Wayland
+and audio development headers SDL uses (the list is in
+`.github/workflows/build.yml`), then:
 
 ```bash
 cargo build --release
 ```
 
-The Windows `.exe` is cross-compiled from Linux with MinGW (`mingw64-gcc`,
-`cmake`, `ninja`); SDL3 is built from source and linked statically:
+Release archives come from `tools/package-release.sh windows|linux|macos`
+(`SOUNDFONT=file.sf2` adds a SoundFont). The Windows `.exe` is
+cross-compiled from Linux with MinGW (`mingw64-gcc`):
 
 ```bash
 rustup target add x86_64-pc-windows-gnu
-tools/package-release.sh      # dist/PhantomSpiderRE-v<version>-Windows-x64.zip
+tools/package-release.sh windows   # dist/PhantomSpiderRE-v<version>-Windows-x64.zip
 ```
+
+CI builds all three on every push and pull request.
 
 `tools/run-tests.sh` plays through the game headless with the scripts in
 `tests/scripts/` and saves screenshots; it needs your JAR in `game-files/`
