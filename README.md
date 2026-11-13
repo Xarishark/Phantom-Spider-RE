@@ -34,7 +34,7 @@ included here or in the releases.
 3. The game checks the file and unpacks its art, music and text into
    `data/`. From then on it starts straight into the game.
 
-The release includes a General MIDI SoundFont
+Every release (Windows, Linux and macOS) includes a General MIDI SoundFont
 ([GeneralUser GS](https://github.com/mrbumpy409/GeneralUser-GS)) for the
 music. Any `.sf2` next to the program works; without one the game is silent.
 
@@ -113,7 +113,9 @@ cargo build --release
 ```
 
 Release archives come from `tools/package-release.sh windows|linux|macos`
-(`SOUNDFONT=file.sf2` adds a SoundFont). The Windows `.exe` is
+(`SOUNDFONT=file.sf2` adds a SoundFont; `tools/fetch-soundfont.sh <dir>`
+downloads the checked copy of GeneralUser GS the releases use). The
+Windows `.exe` is
 cross-compiled from Linux with MinGW (`mingw64-gcc`):
 
 ```bash
@@ -121,7 +123,8 @@ rustup target add x86_64-pc-windows-gnu
 tools/package-release.sh windows   # dist/PhantomSpiderRE-v<version>-Windows-x64.zip
 ```
 
-CI builds all three on every push and pull request.
+CI builds all three, with the SoundFont, on every push and pull request;
+pushing a `v*` tag publishes them as a GitHub release.
 
 `tools/run-tests.sh` plays through the game headless with the scripts in
 `tests/scripts/` and saves screenshots; it needs your JAR in `game-files/`
