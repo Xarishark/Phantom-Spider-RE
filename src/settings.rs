@@ -41,7 +41,7 @@ const TEMPLATE: &str = r#"# Phantom Spider RE settings. Command-line options ove
 # Window size at start, in multiples of the phone's 128x128 screen (1-16).
 scale = 5
 
-# Start in full screen (F11 or Alt+Enter switches while playing).
+# Start in full screen (F, F11 or Alt+Enter switches while playing).
 fullscreen = true
 
 # "sharp": whole-pixel scaling, crisp but with borders.

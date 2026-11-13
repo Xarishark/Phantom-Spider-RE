@@ -46,7 +46,7 @@ Usage: phantom-spider [options]
 
 Keyboard: arrows/WASD move, Enter/Space fire/select, Esc menu/back,
   Tab left soft key, Backspace clear, 0-9 keypad digits, M mute, +/- volume,
-  F11 full screen.
+  F/F11 full screen.
 Gamepad: D-pad/left stick move, A/X/RT fire/select, B/Start menu/back,
   Y/Back/LT left soft key.
 
@@ -660,7 +660,10 @@ fn run(o: &Opts, s: &Settings, data: &Path, g: &mut Graphics, font: &font::Font)
                 Event::KeyDown { keycode: Some(k), keymod, repeat, scancode, .. } => {
                     use sdl3::keyboard::{Keycode, Mod};
                     let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
-                    if k == Keycode::F11 || (alt && k == Keycode::Return) {
+                    if k == Keycode::F11
+                        || (alt && k == Keycode::Return)
+                        || (k == Keycode::F && !game.screen_is_form())
+                    {
                         if !repeat {
                             let w = canvas.window_mut();
                             let fs = !matches!(w.fullscreen_state(), sdl3::video::FullscreenType::Off);
