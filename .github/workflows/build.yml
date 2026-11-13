@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   merge_group:
@@ -10,6 +11,10 @@ on:
 
 permissions:
   contents: read
+
+# Every archive ships the GeneralUser GS SoundFont for the music; it isn't in
+# the repository, so each job downloads the pinned, checksummed copy
+# (tools/fetch-soundfont.sh) and package-release.sh puts it in the archive.
 
 jobs:
   windows:
@@ -25,7 +30,10 @@ jobs:
           rustup default stable
           rustup target add x86_64-pc-windows-gnu
       - name: Build Windows release
-        run: bash tools/package-release.sh windows
+        run: |
+          bash tools/fetch-soundfont.sh "$RUNNER_TEMP/sf"
+          SOUNDFONT="$RUNNER_TEMP/sf/GeneralUser-GS.sf2" SOUNDFONT_LICENSE="$RUNNER_TEMP/sf/LICENSE.txt" \
+            bash tools/package-release.sh windows
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
@@ -54,7 +62,10 @@ jobs:
       - name: Test
         run: cargo test --release --locked
       - name: Build Linux release
-        run: bash tools/package-release.sh linux
+        run: |
+          bash tools/fetch-soundfont.sh "$RUNNER_TEMP/sf"
+          SOUNDFONT="$RUNNER_TEMP/sf/GeneralUser-GS.sf2" SOUNDFONT_LICENSE="$RUNNER_TEMP/sf/LICENSE.txt" \
+            bash tools/package-release.sh linux
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x64
@@ -71,9 +82,33 @@ jobs:
           rustup update stable
           rustup default stable
       - name: Build macOS release
-        run: bash tools/package-release.sh macos
+        run: |
+          bash tools/fetch-soundfont.sh "$RUNNER_TEMP/sf"
+          SOUNDFONT="$RUNNER_TEMP/sf/GeneralUser-GS.sf2" SOUNDFONT_LICENSE="$RUNNER_TEMP/sf/LICENSE.txt" \
+            bash tools/package-release.sh macos
       - uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
           path: dist/PhantomSpiderRE-*-macOS-arm64.zip
           if-no-files-found: error
+
+  release:
+    name: Publish release
+    # only for a pushed version tag, e.g. v1.3.0
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" assets/* --repo "$GITHUB_REPOSITORY" \
+            --title "Phantom Spider RE ${TAG#v}" --generate-notes
