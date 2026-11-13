@@ -3,8 +3,10 @@ use std::{env, fs, path::PathBuf, process::Command};
 fn main() {
     println!("cargo:rerun-if-changed=tools/windows-version.rc.in");
     println!("cargo:rerun-if-changed=Cargo.toml");
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
-        return;
+    match env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("windows") => {}
+        Ok("macos") => return link_clang_runtime(),
+        _ => return,
     }
 
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -32,4 +34,15 @@ fn main() {
     }.expect("run Windows resource compiler");
     assert!(status.success(), "Windows resource compiler failed: {status}");
     println!("cargo:rustc-link-arg-bin=phantom-spider={}", object.display());
+}
+
+/// macOS: SDL3 is linked statically, and its Objective-C code uses
+/// `@available`, which calls `__isPlatformVersionAtLeast` from clang's
+/// runtime library. Rust links without that library, so add it here.
+fn link_clang_runtime() {
+    let out = Command::new("clang").arg("--print-resource-dir").output().expect("run clang --print-resource-dir");
+    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let lib = PathBuf::from(dir).join("lib/darwin/libclang_rt.osx.a");
+    assert!(lib.exists(), "clang runtime not found at {}", lib.display());
+    println!("cargo:rustc-link-arg={}", lib.display());
 }
