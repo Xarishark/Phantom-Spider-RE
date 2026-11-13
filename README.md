@@ -45,7 +45,7 @@ Big Picture mode starts the game full screen.
 
 ## Controls
 
-The game starts in full screen by default. Press F11 or Alt+Enter to switch to a window.
+The game starts in full screen by default. Press F, F11 or Alt+Enter to switch to a window.
 
 | Action | Keyboard | Gamepad |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ The game starts in full screen by default. Press F11 or Alt+Enter to switch to a
 | Left soft key | Tab, F1 | Y, Back, left trigger |
 | Clear a digit in forms | Backspace | |
 | Phone keypad digits | 0-9 | |
-| Full screen | F11, Alt+Enter | |
+| Full screen | F, F11, Alt+Enter | |
 | Mute / volume | M, +/- | |
 
 You can connect or disconnect gamepads on the JAR setup screen or during play. All connected gamepads control the same player.
